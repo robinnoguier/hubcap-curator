@@ -64,16 +64,26 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({
 }) : null;
 
 export async function GET() {
-  return NextResponse.json({ 
-    message: 'Search-stream endpoint is running',
-    timestamp: new Date().toISOString(),
-    env: {
-      hasOpenAI: !!process.env.OPENAI_API_KEY,
-      hasYouTube: !!process.env.YOUTUBE_API_KEY,
-      hasUnsplash: !!process.env.UNSPLASH_ACCESS_KEY,
-      hasPerplexity: !!process.env.PPLX_API_KEY
-    }
-  });
+  try {
+    return NextResponse.json({ 
+      message: 'Search-stream endpoint is running',
+      timestamp: new Date().toISOString(),
+      env: {
+        hasOpenAI: !!process.env.OPENAI_API_KEY,
+        hasYouTube: !!process.env.YOUTUBE_API_KEY,
+        hasUnsplash: !!process.env.UNSPLASH_ACCESS_KEY,
+        hasPerplexity: !!process.env.PPLX_API_KEY,
+        hasSupabase: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        hasGiphy: !!process.env.GIPHY_API_KEY
+      }
+    });
+  } catch (error) {
+    console.error('GET /api/search-stream error:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error', 
+      details: (error as any)?.message || 'Unknown error' 
+    }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -167,12 +177,18 @@ export async function POST(request: NextRequest) {
       try {
         // Start all API calls in parallel with enriched context
         const promises = [
-          fetchPerplexityLinks(contextualTopic, 'long_form_videos', sendUpdate),
-          fetchPerplexityLinks(contextualTopic, 'short_form_videos', sendUpdate), 
-          fetchPerplexityLinks(contextualTopic, 'articles', sendUpdate),
-          fetchYouTubeVideos(contextualTopic, sendUpdate),
-          fetchYouTubeShorts(contextualTopic, sendUpdate),
-          fetchNewsAPI(contextualTopic, sendUpdate),
+          // Only call APIs that have their environment variables configured
+          ...(process.env.PPLX_API_KEY ? [
+            fetchPerplexityLinks(contextualTopic, 'long_form_videos', sendUpdate),
+            fetchPerplexityLinks(contextualTopic, 'short_form_videos', sendUpdate), 
+            fetchPerplexityLinks(contextualTopic, 'articles', sendUpdate),
+          ] : []),
+          ...(process.env.YOUTUBE_API_KEY ? [
+            fetchYouTubeVideos(contextualTopic, sendUpdate),
+            fetchYouTubeShorts(contextualTopic, sendUpdate),
+          ] : []),
+          // Always call these as they have fallbacks
+          ...(process.env.NEWS_API_KEY ? [fetchNewsAPI(contextualTopic, sendUpdate)] : []),
           fetchPodcasts(contextualTopic, sendUpdate),
           fetchGoogleImages(contextualTopic, sendUpdate)
         ];
