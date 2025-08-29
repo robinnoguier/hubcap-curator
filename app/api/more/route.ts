@@ -6,9 +6,9 @@ import { generateEmbedding, extractLinksFromText, rankLinksBySimilarity, decodeH
 import { AI_PROMPTS, buildContextFromFeedback } from '@/lib/prompts';
 import { MoreLinksRequest, SearchResponse, Link } from '@/lib/types';
 
-const openai = new OpenAI({
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}) : null;
 
 export async function POST(request: NextRequest) {
   try {
@@ -98,6 +98,8 @@ export async function POST(request: NextRequest) {
 }
 
 async function fetchMoreOpenAILinks(topic: string, results: SearchResponse, likedLinks: Link[], dislikedLinks: Link[]) {
+  if (!openai) return;
+  
   try {
     const context = buildContextFromFeedback(likedLinks, dislikedLinks);
     

@@ -6,9 +6,9 @@ import { generateEmbedding, extractLinksFromText, decodeHtmlEntities, fetchOGIma
 import { AI_PROMPTS } from '@/lib/prompts';
 import { SearchRequest, SearchResponse, Link, YouTubeVideo } from '@/lib/types';
 
-const openai = new OpenAI({
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}) : null;
 
 export async function POST(request: NextRequest) {
   try {
@@ -87,6 +87,8 @@ export async function POST(request: NextRequest) {
 }
 
 async function fetchOpenAILinks(topic: string, results: SearchResponse) {
+  if (!openai) return;
+  
   try {
     const prompts = {
       long_form_videos: AI_PROMPTS.OPENAI.LONG_FORM_VIDEOS(topic),

@@ -5,6 +5,9 @@ const getOpenAIClient = () => {
   if (typeof window !== 'undefined') {
     throw new Error('OpenAI client should only be used on the server-side');
   }
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY environment variable is required');
+  }
   return new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
@@ -12,6 +15,10 @@ const getOpenAIClient = () => {
 
 export const generateEmbedding = async (text: string): Promise<Float32Array> => {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      // Return a dummy embedding during build time
+      return new Float32Array(1536).fill(0);
+    }
     const openai = getOpenAIClient();
     const response = await openai.embeddings.create({
       model: 'text-embedding-3-small',
