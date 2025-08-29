@@ -138,7 +138,7 @@ export const extractLinksFromText = (text: string, source: string): Partial<Link
   // Handle Perplexity format: **Title**  \n URL: https://...  \n Description
   if (source === 'Perplexity') {
     // Look for numbered entries with title, URL, and description
-    const perplexityPattern = /(\d+)\.\s*\*\*(.+?)\*\*[^\n]*\n.*?URL:\s*(https?:\/\/[^\s\n]+)[^\n]*\n.*?Description:\s*([^\n]+)/gs;
+    const perplexityPattern = /(\d+)\.\s*\*\*(.+?)\*\*[^\n]*\n.*?URL:\s*(https?:\/\/[^\s\n]+)[^\n]*\n.*?Description:\s*([^\n]+)/gm;
     let match;
     
     while ((match = perplexityPattern.exec(text)) !== null) {
@@ -157,7 +157,7 @@ export const extractLinksFromText = (text: string, source: string): Partial<Link
     
     // Alternative format: Title - URL - Description
     if (links.length === 0) {
-      const altPattern = /\d+\.\s*([^-\n]+)\s*-?\s*URL:\s*(https?:\/\/[^\s\n]+)\s*-?\s*([^\n]*)/gs;
+      const altPattern = /\d+\.\s*([^-\n]+)\s*-?\s*URL:\s*(https?:\/\/[^\s\n]+)\s*-?\s*([^\n]*)/gm;
       let altMatch;
       
       while ((altMatch = altPattern.exec(text)) !== null) {
@@ -177,7 +177,7 @@ export const extractLinksFromText = (text: string, source: string): Partial<Link
     
     // Fallback: Simple title - URL - description format
     if (links.length === 0) {
-      const simplePattern = /\d+\.\s*([^-]+?)\s*-\s*(https?:\/\/[^\s]+)\s*-\s*(.+?)(?=\n\d+\.|$)/gs;
+      const simplePattern = /\d+\.\s*([^-]+?)\s*-\s*(https?:\/\/[^\s]+)\s*-\s*(.+?)(?=\n\d+\.|$)/gm;
       let simpleMatch;
       
       while ((simpleMatch = simplePattern.exec(text)) !== null) {
@@ -197,7 +197,7 @@ export const extractLinksFromText = (text: string, source: string): Partial<Link
   } else {
     // Original parsing for OpenAI and other sources
     // Try to parse structured format first (Title - URL - Description)
-    const structuredMatches = text.match(/\d+\.\s*(.+?)\s*-\s*(https?:\/\/[^\s]+)\s*-\s*(.+?)(?=\d+\.|$)/gs);
+    const structuredMatches = text.match(/\d+\.\s*(.+?)\s*-\s*(https?:\/\/[^\s]+)\s*-\s*(.+?)(?=\d+\.|$)/gm);
     if (structuredMatches) {
       for (const match of structuredMatches) {
         const parts = match.split(' - ');

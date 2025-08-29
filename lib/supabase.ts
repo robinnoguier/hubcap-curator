@@ -132,32 +132,37 @@ export const hubOperations = {
   // Delete hub and all related data
   async delete(hubId: number) {
     // Delete in correct order to maintain referential integrity
-    // 1. Delete links first (they reference searches)
-    await supabase
-      .from('links')
-      .delete()
-      .in('search_id', 
-        supabase
-          .from('searches')
-          .select('id')
-          .in('topic_id',
-            supabase
-              .from('topics')
-              .select('id')
-              .eq('hub_id', hubId)
-          )
-      )
+    // Get topic IDs first
+    const { data: topics } = await supabase
+      .from('topics')
+      .select('id')
+      .eq('hub_id', hubId)
+    
+    if (topics && topics.length > 0) {
+      const topicIds = topics.map(t => t.id)
+      
+      // Get search IDs
+      const { data: searches } = await supabase
+        .from('searches')
+        .select('id')
+        .in('topic_id', topicIds)
+      
+      if (searches && searches.length > 0) {
+        const searchIds = searches.map(s => s.id)
+        
+        // 1. Delete links first (they reference searches)
+        await supabase
+          .from('links')
+          .delete()
+          .in('search_id', searchIds)
+      }
 
-    // 2. Delete searches (they reference topics)
-    await supabase
-      .from('searches')
-      .delete()
-      .in('topic_id',
-        supabase
-          .from('topics')
-          .select('id')
-          .eq('hub_id', hubId)
-      )
+      // 2. Delete searches (they reference topics)
+      await supabase
+        .from('searches')
+        .delete()
+        .in('topic_id', topicIds)
+    }
 
     // 3. Delete topics (they reference hubs)
     await supabase

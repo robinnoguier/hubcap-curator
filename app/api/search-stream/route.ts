@@ -635,7 +635,7 @@ Respond with just the keywords separated by spaces, nothing else.`
         searchKeywords = keywordResponse.data.choices[0]?.message?.content?.trim() || topic;
         console.log('Unsplash: Using AI-generated keywords:', searchKeywords);
       } catch (keywordError) {
-        console.log('Unsplash: Failed to get AI keywords, using original topic:', keywordError.message);
+        console.log('Unsplash: Failed to get AI keywords, using original topic:', (keywordError as any)?.message || 'Unknown error');
       }
     }
     
@@ -681,7 +681,7 @@ Respond with just the keywords separated by spaces, nothing else.`
       console.log('Unsplash: No API key found, falling back');
     }
   } catch (error) {
-    console.error('Unsplash search error:', error.response?.data || error.message);
+    console.error('Unsplash search error:', (error as any)?.response?.data || (error as any)?.message || 'Unknown error');
   }
   
   // Fallback: Create placeholder images
@@ -838,7 +838,7 @@ async function fetchNewsAPI(contextualTopic: any, sendUpdate: Function) {
         }
       }
     } catch (headlineError) {
-      console.error('NewsAPI headlines fallback error:', headlineError);
+      console.error('NewsAPI headlines fallback error:', (headlineError as any)?.message || headlineError);
     }
   }
 }

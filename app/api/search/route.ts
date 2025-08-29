@@ -21,7 +21,9 @@ export async function POST(request: NextRequest) {
     const results: SearchResponse = {
       long_form_videos: [],
       short_form_videos: [],
-      articles: []
+      articles: [],
+      podcasts: [],
+      images: []
     };
 
     await Promise.all([
@@ -236,7 +238,7 @@ async function fetchYouTubeVideos(topic: string, results: SearchResponse) {
       }
     });
 
-    const videos: YouTubeVideo[] = response.data.items || [];
+    const videos: any[] = response.data.items || [];
     
     for (const video of videos) {
       const link: Link = {
@@ -245,6 +247,7 @@ async function fetchYouTubeVideos(topic: string, results: SearchResponse) {
         snippet: decodeHtmlEntities(video.snippet.description.substring(0, 200)) + '...',
         source: 'YouTube',
         category: 'long_form_videos',
+        topic: topic,
         thumbnail: `https://img.youtube.com/vi/${video.id.videoId}/maxresdefault.jpg`
       };
       
@@ -272,7 +275,7 @@ async function fetchYouTubeShorts(topic: string, results: SearchResponse) {
       }
     });
 
-    const videos: YouTubeVideo[] = response.data.items || [];
+    const videos: any[] = response.data.items || [];
     
     // Get video details to check duration and other Shorts indicators
     if (videos.length > 0) {
@@ -308,6 +311,7 @@ async function fetchYouTubeShorts(topic: string, results: SearchResponse) {
             snippet: decodeHtmlEntities(videoDetail.snippet.description.substring(0, 200)) + '...',
             source: 'YouTube',
             category: 'short_form_videos',
+            topic: topic,
             thumbnail: `https://img.youtube.com/vi/${videoDetail.id}/maxresdefault.jpg`
           };
           
