@@ -306,7 +306,7 @@ async function fetchYouTubeVideos(contextualTopic: any, sendUpdate: Function) {
       }
     });
 
-    const videos: YouTubeVideo[] = response.data.items || [];
+    const videos: any[] = response.data.items || [];
     
     if (videos.length > 0) {
       const links: Link[] = videos.map(video => ({
@@ -366,7 +366,7 @@ async function fetchYouTubeShorts(contextualTopic: any, sendUpdate: Function) {
       }
     });
 
-    const videos: YouTubeVideo[] = response.data.items || [];
+    const videos: any[] = response.data.items || [];
     
     if (videos.length > 0) {
       const videoIds = videos.map(v => v.id.videoId).join(',');
