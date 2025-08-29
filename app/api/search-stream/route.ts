@@ -315,6 +315,7 @@ async function fetchYouTubeVideos(contextualTopic: any, sendUpdate: Function) {
         snippet: decodeHtmlEntities(video.snippet.description.substring(0, 200)) + '...',
         source: 'YouTube',
         category: 'long_form_videos',
+        topic: topic,
         thumbnail: `https://img.youtube.com/vi/${video.id.videoId}/maxresdefault.jpg`
       }));
 
@@ -398,6 +399,7 @@ async function fetchYouTubeShorts(contextualTopic: any, sendUpdate: Function) {
             snippet: decodeHtmlEntities(videoDetail.snippet.description.substring(0, 200)) + '...',
             source: 'YouTube',
             category: 'short_form_videos',
+            topic: topic,
             thumbnail: `https://img.youtube.com/vi/${videoDetail.id}/maxresdefault.jpg`
           });
         }
@@ -445,6 +447,7 @@ async function createFallbackArticles(topic: string): Promise<Link[]> {
           snippet: result.Text.substring(0, 200),
           source: new URL(result.FirstURL).hostname.replace('www.', ''),
           category: 'articles',
+          topic: topic,
           thumbnail: `https://via.placeholder.com/400x200/6366F1/FFFFFF?text=${encodeURIComponent('Research Article')}`
         });
       }
@@ -469,6 +472,7 @@ async function createFallbackArticles(topic: string): Promise<Link[]> {
       snippet: `Harvard T.H. Chan School of Public Health provides evidence-based guidance on ${topic}, reviewing the latest research and recommendations.`,
       source: 'Harvard School of Public Health',
       category: 'articles',
+      topic: topic,
       thumbnail: `https://via.placeholder.com/400x200/DC2626/FFFFFF?text=${encodeURIComponent('Harvard Nutrition')}`
     });
   }
@@ -480,6 +484,7 @@ async function createFallbackArticles(topic: string): Promise<Link[]> {
       snippet: `The American College of Sports Medicine provides research-based insights on ${topic} and exercise science.`,
       source: 'American College of Sports Medicine',
       category: 'articles',
+      topic: topic,
       thumbnail: `https://via.placeholder.com/400x200/16A34A/FFFFFF?text=${encodeURIComponent('Exercise Science')}`
     });
   }
@@ -492,6 +497,7 @@ async function createFallbackArticles(topic: string): Promise<Link[]> {
       snippet: `Runner's World provides expert advice, training tips, and the latest research on ${topic} for runners of all levels.`,
       source: 'Runner\'s World',
       category: 'articles',
+      topic: topic,
       thumbnail: `https://via.placeholder.com/400x200/FF6B35/FFFFFF?text=${encodeURIComponent('Runners World')}`
     });
   }
@@ -503,6 +509,7 @@ async function createFallbackArticles(topic: string): Promise<Link[]> {
       snippet: `Mayo Clinic provides trusted medical information and expert insights on ${topic} from leading healthcare professionals.`,
       source: 'Mayo Clinic',
       category: 'articles',
+      topic: topic,
       thumbnail: `https://via.placeholder.com/400x200/0078D4/FFFFFF?text=${encodeURIComponent('Mayo Clinic')}`
     });
   }
