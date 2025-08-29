@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import axios from 'axios';
-import { insertLink } from '@/lib/db';
+// import { insertLink } from '@/lib/db'; // Removed - using Supabase instead
 import { generateEmbedding, extractLinksFromText, decodeHtmlEntities, fetchOGImage } from '@/lib/utils';
 import { AI_PROMPTS } from '@/lib/prompts';
 import { Link, YouTubeVideo } from '@/lib/types';
@@ -300,9 +300,9 @@ async function fetchPerplexityLinks(contextualTopic: any, category: string, send
           if (category === 'articles' && !link.thumbnail) {
             link.thumbnail = await fetchOGImage(link.url);
           }
-          const embeddingText = `${link.title} ${link.snippet}`;
-          const embedding = await generateEmbedding(embeddingText);
-          await insertLink({ ...link, topic, embedding });
+          // TODO: Store in Supabase if needed
+          // const embeddingText = `${link.title} ${link.snippet}`;
+          // const embedding = await generateEmbedding(embeddingText);
         } catch (error) {
           console.error('Error storing link:', error);
         }
@@ -360,9 +360,9 @@ async function fetchYouTubeVideos(contextualTopic: any, sendUpdate: Function) {
       // Store in database
       for (const link of links) {
         try {
-          const embeddingText = `${link.title} ${link.snippet}`;
-          const embedding = await generateEmbedding(embeddingText);
-          await insertLink({ ...link, topic, embedding });
+          // TODO: Store in Supabase if needed
+          // const embeddingText = `${link.title} ${link.snippet}`;
+          // const embedding = await generateEmbedding(embeddingText);
         } catch (error) {
           console.error('Error storing link:', error);
         }
@@ -447,9 +447,9 @@ async function fetchYouTubeShorts(contextualTopic: any, sendUpdate: Function) {
         // Store in database
         for (const link of shortLinks) {
           try {
-            const embeddingText = `${link.title} ${link.snippet}`;
-            const embedding = await generateEmbedding(embeddingText);
-            await insertLink({ ...link, topic, embedding });
+            // TODO: Store in Supabase if needed
+            // const embeddingText = `${link.title} ${link.snippet}`;
+            // const embedding = await generateEmbedding(embeddingText);
           } catch (error) {
             console.error('Error storing link:', error);
           }
@@ -592,9 +592,9 @@ async function fetchPodcasts(contextualTopic: any, sendUpdate: Function) {
       // Store in database
       for (const link of podcasts) {
         try {
-          const embeddingText = `${link.title} ${link.snippet}`;
-          const embedding = await generateEmbedding(embeddingText);
-          await insertLink({ ...link, topic, embedding });
+          // TODO: Store in Supabase if needed
+          // const embeddingText = `${link.title} ${link.snippet}`;
+          // const embedding = await generateEmbedding(embeddingText);
         } catch (error) {
           console.error('Error storing podcast:', error);
         }
@@ -818,9 +818,9 @@ async function fetchNewsAPI(contextualTopic: any, sendUpdate: Function) {
             if (!link.thumbnail) {
               link.thumbnail = await fetchOGImage(link.url);
             }
-            const embeddingText = `${link.title} ${link.snippet}`;
-            const embedding = await generateEmbedding(embeddingText);
-            await insertLink({ ...link, topic, embedding });
+            // TODO: Store in Supabase if needed
+            // const embeddingText = `${link.title} ${link.snippet}`;
+            // const embedding = await generateEmbedding(embeddingText);
           } catch (error) {
             console.error('Error storing news article:', error);
           }
