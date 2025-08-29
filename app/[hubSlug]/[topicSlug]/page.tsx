@@ -192,21 +192,23 @@ export default function TopicSearchBySlug() {
           )
           if (realSearch) {
             setSelectedSearchId(realSearch.searchId)
-            // Show results for the real search
-            const convertLinks = (links: any[]) => 
-              links.map(link => ({
-                ...link,
-                id: link.id,
-                isPlaying: false
-              }))
+            // Show results for the real search only if we don't already have current results
+            if (!results || Object.values(results).every(arr => arr.length === 0)) {
+              const convertLinks = (links: any[]) => 
+                links.map(link => ({
+                  ...link,
+                  id: link.id,
+                  isPlaying: false
+                }))
 
-            setResults({
-              long_form_videos: convertLinks(realSearch.links.long_form_videos || []),
-              short_form_videos: convertLinks(realSearch.links.short_form_videos || []),
-              articles: convertLinks(realSearch.links.articles || []),
-              podcasts: convertLinks(realSearch.links.podcasts || []),
-              images: convertLinks(realSearch.links.images || [])
-            })
+              setResults({
+                long_form_videos: convertLinks(realSearch.links.long_form_videos || []),
+                short_form_videos: convertLinks(realSearch.links.short_form_videos || []),
+                articles: convertLinks(realSearch.links.articles || []),
+                podcasts: convertLinks(realSearch.links.podcasts || []),
+                images: convertLinks(realSearch.links.images || [])
+              })
+            }
             return
           }
         }
@@ -375,7 +377,10 @@ export default function TopicSearchBySlug() {
       })
       
       if (!response.ok) {
-        throw new Error('Search failed')
+        console.error('Search request failed:', response.status, response.statusText)
+        const errorText = await response.text()
+        console.error('Error response:', errorText)
+        throw new Error(`Search failed: ${response.status} ${response.statusText}`)
       }
 
       const reader = response.body?.getReader()
@@ -394,7 +399,9 @@ export default function TopicSearchBySlug() {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6))
+              const dataString = line.slice(6)
+              console.log('Received stream data:', dataString)
+              const data = JSON.parse(dataString)
               
               if (data.type === 'done') {
                 setSearching(false)
@@ -427,13 +434,8 @@ export default function TopicSearchBySlug() {
                   })
                 )
                 
-                // Invalidate topic links cache and refresh searches list
+                // Invalidate topic links cache - no need to refresh immediately since we already have the results
                 cache.invalidateCache('topicLinks', topicInfo.id)
-                setTimeout(() => {
-                  fetchSavedLinks(topicInfo.id).then(() => {
-                    // After refresh, we'll keep the selection on the newest search
-                  })
-                }, 1000)
                 
                 // Clear the search inputs
                 setSearchQuery('')
