@@ -89,14 +89,16 @@ export default function TopicSearchBySlug() {
         const hubsResponse = await fetch('/api/hubs')
         if (hubsResponse.ok) {
           hubs = await hubsResponse.json()
-          cache.setHubs(hubs)
+          if (hubs) {
+            cache.setHubs(hubs)
+          }
         } else {
           router.push('/')
           return
         }
       }
       
-      const matchingHub = hubs.find((h: any) => generateSlug(h.name) === hubSlug)
+      const matchingHub = hubs?.find((h: any) => generateSlug(h.name) === hubSlug)
       
       if (matchingHub) {
         // Try to get hub with topics from cache
