@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import axios from 'axios';
 import { insertLink } from '@/lib/db';
@@ -63,17 +63,32 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 }) : null;
 
+export async function GET() {
+  return NextResponse.json({ 
+    message: 'Search-stream endpoint is running',
+    timestamp: new Date().toISOString(),
+    env: {
+      hasOpenAI: !!process.env.OPENAI_API_KEY,
+      hasYouTube: !!process.env.YOUTUBE_API_KEY,
+      hasUnsplash: !!process.env.UNSPLASH_ACCESS_KEY,
+      hasPerplexity: !!process.env.PPLX_API_KEY
+    }
+  });
+}
+
 export async function POST(request: NextRequest) {
-  const { 
-    topic, 
-    topicId,
-    hubId,
-    searchDescription,
-    hubName,
-    hubDescription,
-    topicName,
-    topicDescription
-  } = await request.json();
+  try {
+    console.log('Search-stream POST endpoint called');
+    const { 
+      topic, 
+      topicId,
+      hubId,
+      searchDescription,
+      hubName,
+      hubDescription,
+      topicName,
+      topicDescription
+    } = await request.json();
   
   if (!topic) {
     return new Response('Topic is required', { status: 400 });
@@ -208,6 +223,13 @@ export async function POST(request: NextRequest) {
       'Connection': 'keep-alive',
     },
   });
+  } catch (error) {
+    console.error('Search-stream POST error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: (error as any)?.message || 'Unknown error' },
+      { status: 500 }
+    );
+  }
 }
 
 // OpenAI removed since it was generating fake URLs
