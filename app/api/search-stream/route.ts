@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
           }
         } catch (error) {
           console.error('Error sending update:', error);
-          if (error.code === 'ERR_INVALID_STATE') {
+          if ((error as any)?.code === 'ERR_INVALID_STATE') {
             isClosed = true;
           }
         }
@@ -279,8 +279,8 @@ async function fetchPerplexityLinks(contextualTopic: any, category: string, send
 
 async function fetchYouTubeVideos(contextualTopic: any, sendUpdate: Function) {
   // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find(p => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find(p => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
+  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
+  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
   
   let searchQuery = contextualTopic.originalQuery;
   if (topicContext) {
@@ -338,8 +338,8 @@ async function fetchYouTubeVideos(contextualTopic: any, sendUpdate: Function) {
 
 async function fetchYouTubeShorts(contextualTopic: any, sendUpdate: Function) {
   // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find(p => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find(p => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
+  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
+  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
   
   let searchQuery = contextualTopic.originalQuery;
   if (topicContext) {
@@ -512,8 +512,8 @@ async function createFallbackArticles(topic: string): Promise<Link[]> {
 
 async function fetchPodcasts(contextualTopic: any, sendUpdate: Function) {
   // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find(p => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find(p => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
+  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
+  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
   
   let searchQuery = contextualTopic.originalQuery;
   if (topicContext) {
@@ -581,8 +581,8 @@ async function fetchPodcasts(contextualTopic: any, sendUpdate: Function) {
 
 async function fetchGoogleImages(contextualTopic: any, sendUpdate: Function) {
   // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find(p => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find(p => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
+  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
+  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
   
   let searchQuery = contextualTopic.originalQuery;
   if (topicContext) {
@@ -708,8 +708,8 @@ Respond with just the keywords separated by spaces, nothing else.`
 
 async function fetchNewsAPI(contextualTopic: any, sendUpdate: Function) {
   // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find(p => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find(p => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
+  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
+  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
   
   let searchQuery = contextualTopic.originalQuery;
   if (topicContext) {

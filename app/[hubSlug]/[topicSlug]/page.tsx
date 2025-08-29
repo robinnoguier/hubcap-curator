@@ -498,7 +498,7 @@ export default function TopicSearchBySlug() {
                   const category = data.category as keyof SearchResponseWithIds
                   // Check for duplicates by URL before adding
                   const existingUrls = new Set((prev[category] || []).map(l => l.url))
-                  const newLinks = linksWithIds.filter(link => !existingUrls.has(link.url))
+                  const newLinks = linksWithIds.filter((link: any) => !existingUrls.has(link.url))
                   return {
                     ...prev,
                     [category]: [...(prev[category] || []), ...newLinks]

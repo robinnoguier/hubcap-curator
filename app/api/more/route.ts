@@ -33,7 +33,9 @@ export async function POST(request: NextRequest) {
     const results: SearchResponse = {
       long_form_videos: [],
       short_form_videos: [],
-      articles: []
+      articles: [],
+      podcasts: [],
+      images: []
     };
 
     // Fetch new links
@@ -100,9 +102,9 @@ async function fetchMoreOpenAILinks(topic: string, results: SearchResponse, like
     const context = buildContextFromFeedback(likedLinks, dislikedLinks);
     
     const prompts = {
-      long_form_videos: AI_PROMPTS.OPENAI.MORE_LONG_FORM_VIDEOS(topic, context),
-      short_form_videos: AI_PROMPTS.OPENAI.MORE_SHORT_FORM_VIDEOS(topic, context),
-      articles: AI_PROMPTS.OPENAI.MORE_ARTICLES(topic, context)
+      long_form_videos: AI_PROMPTS.OPENAI.LONG_FORM_VIDEOS(topic, context),
+      short_form_videos: AI_PROMPTS.OPENAI.SHORT_FORM_VIDEOS(topic, context),
+      articles: AI_PROMPTS.OPENAI.ARTICLES(topic, context)
     };
 
     const promises = Object.entries(prompts).map(async ([category, prompt]) => {
@@ -161,9 +163,9 @@ async function fetchMorePerplexityLinks(topic: string, results: SearchResponse, 
     const context = buildContextFromFeedback(likedLinks, dislikedLinks);
     
     const prompts = {
-      long_form_videos: AI_PROMPTS.PERPLEXITY.MORE_LONG_FORM_VIDEOS(topic, context),
-      short_form_videos: AI_PROMPTS.PERPLEXITY.MORE_SHORT_FORM_VIDEOS(topic, context),
-      articles: AI_PROMPTS.PERPLEXITY.MORE_ARTICLES(topic, context)
+      long_form_videos: AI_PROMPTS.PERPLEXITY.LONG_FORM_VIDEOS(topic, context),
+      short_form_videos: AI_PROMPTS.PERPLEXITY.SHORT_FORM_VIDEOS(topic, context),
+      articles: AI_PROMPTS.PERPLEXITY.ARTICLES(topic, context)
     };
 
     const promises = Object.entries(prompts).map(async ([category, prompt]) => {
@@ -233,6 +235,7 @@ async function fetchMoreYouTubeVideos(topic: string, results: SearchResponse) {
         snippet: decodeHtmlEntities(video.snippet.description.substring(0, 200)) + '...',
         source: 'YouTube',
         category: 'long_form_videos',
+        topic: topic,
         thumbnail: `https://img.youtube.com/vi/${video.id.videoId}/maxresdefault.jpg`
       };
       
