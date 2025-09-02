@@ -87,7 +87,7 @@ export default function HubDetail() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {Array.from({ length: 4 }, (_, i) => (
-                <div key={i} className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div key={i} className="white-10 rounded-lg p-6 border border-gray-700">
                   <div className="h-6 bg-gray-600 rounded w-3/4 mb-3"></div>
                   <div className="h-4 bg-gray-700 rounded w-full mb-2"></div>
                   <div className="h-4 bg-gray-700 rounded w-2/3"></div>
@@ -122,12 +122,12 @@ export default function HubDetail() {
         {/* Header */}
         <div className="mb-8">
           <Breadcrumbs items={[
-            { label: 'Hubs', href: '/' },
-            { label: hub.name, active: true }
+            { label: 'Hubs', href: '/', isHome: true },
+            { label: hub.name, active: true, imageUrl: hub.image_url }
           ]} />
           
           <h1 className="text-4xl font-bold mb-4">
-            <span className="text-hubcap-accent">{hub.name}</span> Topics
+            <span className="text-white">{hub.name}</span> Topics
           </h1>
           {hub.description && (
             <p className="text-xl text-gray-300 mb-4">{hub.description}</p>
@@ -140,15 +140,15 @@ export default function HubDetail() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {/* Create New Topic Card */}
           <div 
-            className="bg-gray-800 rounded-lg p-6 border border-gray-600 border-dashed hover:border-hubcap-accent transition-all duration-200 cursor-pointer flex flex-col items-center justify-center min-h-[160px]"
+            className="white-10 rounded-lg p-6 border border-gray-600 border-dashed hover:border-hubcap-accent transition-all duration-200 cursor-pointer flex flex-col items-center justify-center min-h-[160px]"
             onClick={() => setShowCreateTopic(true)}
           >
             <div className="w-12 h-12 rounded-full bg-hubcap-accent bg-opacity-20 flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-hubcap-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-hubcap-accent">Create New Topic</h3>
+            <h3 className="text-lg font-semibold text-white">Create New Topic</h3>
             <p className="text-sm text-gray-400 text-center mt-2">
               Add a topic to this hub
             </p>
@@ -167,7 +167,7 @@ export default function HubDetail() {
         {topics.length === 0 && (
           <div className="text-center mt-12 text-gray-400">
             <p className="text-lg mb-2">No topics yet!</p>
-            <p>Create your first topic to start curating content for <span className="text-hubcap-accent">{hub.name}</span>.</p>
+            <p>Create your first topic to start curating content for <span className="text-white">{hub.name}</span>.</p>
           </div>
         )}
       </div>
@@ -175,9 +175,9 @@ export default function HubDetail() {
       {/* Create Topic Modal */}
       {showCreateTopic && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
+          <div className="white-10 rounded-lg p-6 w-full max-w-md border border-gray-700">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-hubcap-accent">Create New Topic</h2>
+              <h2 className="text-xl font-semibold text-white">Create New Topic</h2>
               <button
                 onClick={() => {
                   setShowCreateTopic(false)

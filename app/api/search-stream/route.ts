@@ -14,7 +14,8 @@ function buildContextualSearchQuery({
   hubName,
   hubDescription,
   topicName,
-  topicDescription
+  topicDescription,
+  subtopicName
 }: {
   userQuery: string;
   searchDescription?: string;
@@ -22,6 +23,7 @@ function buildContextualSearchQuery({
   hubDescription?: string;
   topicName?: string;
   topicDescription?: string;
+  subtopicName?: string;
 }) {
   let contextParts: string[] = [];
   
@@ -39,6 +41,11 @@ function buildContextualSearchQuery({
     if (topicDescription) {
       contextParts.push(`Topic Focus: ${topicDescription}`);
     }
+  }
+  
+  // Add subtopic context
+  if (subtopicName) {
+    contextParts.push(`Subtopic: ${subtopicName}`);
   }
   
   // Add user's search query
@@ -63,8 +70,41 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 }) : null;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Check if this is a search request (has topic parameter)
+    const { searchParams } = new URL(request.url);
+    const topic = searchParams.get('topic');
+    
+    if (topic) {
+      // Handle search request
+      console.log('Search-stream GET endpoint called with topic:', topic);
+      
+      const topicId = searchParams.get('topicId');
+      const hubId = searchParams.get('hubId');
+      const searchDescription = searchParams.get('description') || '';
+      const hubName = searchParams.get('hubName') || '';
+      const hubDescription = searchParams.get('hubDescription') || '';
+      const topicName = searchParams.get('topicName') || '';
+      const topicDescription = searchParams.get('topicDescription') || '';
+      const subtopicName = searchParams.get('subtopicName') || '';
+      const subtopicId = searchParams.get('subtopicId');
+      
+      return handleSearch({
+        topic,
+        topicId: topicId ? parseInt(topicId) : undefined,
+        hubId: hubId ? parseInt(hubId) : undefined,
+        searchDescription,
+        hubName,
+        hubDescription,
+        topicName,
+        topicDescription,
+        subtopicName,
+        subtopicId: subtopicId ? parseInt(subtopicId) : undefined
+      });
+    }
+    
+    // Default health check response
     return NextResponse.json({ 
       message: 'Search-stream endpoint is running',
       timestamp: new Date().toISOString(),
@@ -86,32 +126,46 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    console.log('Search-stream POST endpoint called');
-    const { 
-      topic, 
-      topicId,
-      hubId,
-      searchDescription,
-      hubName,
-      hubDescription,
-      topicName,
-      topicDescription
-    } = await request.json();
+async function handleSearch(params: {
+  topic: string;
+  originalQuery?: string; // The user's original search query (without context)
+  topicId?: number;
+  hubId?: number;
+  searchDescription?: string;
+  hubName?: string;
+  hubDescription?: string;
+  topicName?: string;
+  topicDescription?: string;
+  subtopicName?: string;
+  subtopicId?: number;
+}) {
+  const { 
+    topic, 
+    originalQuery,
+    topicId,
+    hubId,
+    searchDescription,
+    hubName,
+    hubDescription,
+    topicName,
+    topicDescription,
+    subtopicName,
+    subtopicId
+  } = params;
   
   if (!topic) {
     return new Response('Topic is required', { status: 400 });
   }
 
-  // Build enriched context for AI searches
+  // Build enriched context for AI searches, including subtopic if present
   const contextualTopic = buildContextualSearchQuery({
     userQuery: topic,
     searchDescription,
     hubName,
     hubDescription,
     topicName,
-    topicDescription
+    topicDescription,
+    subtopicName
   });
 
   const encoder = new TextEncoder();
@@ -126,9 +180,10 @@ export async function POST(request: NextRequest) {
       try {
         searchRecord = await searchOperations.create(
           contextualTopic.originalQuery,
-          undefined, // search_keywords will be set later
-          topicId,
-          searchDescription
+          originalQuery || undefined, // Store the user's original query in search_keywords
+          topicId, // Always pass topicId (required by foreign key)
+          searchDescription,
+          subtopicId // Pass subtopicId as 5th parameter
         );
         console.log('Created search record:', searchRecord.id);
         console.log('With context:', contextualTopic.enrichedQuery);
@@ -239,6 +294,13 @@ export async function POST(request: NextRequest) {
       'Connection': 'keep-alive',
     },
   });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    console.log('Search-stream POST endpoint called');
+    const body = await request.json();
+    return handleSearch(body);
   } catch (error) {
     console.error('Search-stream POST error:', error);
     return NextResponse.json(

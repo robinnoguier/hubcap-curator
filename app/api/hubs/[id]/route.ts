@@ -42,7 +42,7 @@ export async function PATCH(
       )
     }
 
-    const { name, description, imageUrl, color } = await request.json()
+    const { name, description, imageUrl, color, memberNicknamePlural, fakeOnlineCount } = await request.json()
     
     if (!name) {
       return NextResponse.json(
@@ -51,7 +51,22 @@ export async function PATCH(
       )
     }
 
-    const hub = await hubOperations.update(hubId, name, description, imageUrl, color)
+    // Validate and clamp fakeOnlineCount if provided
+    let validatedCount = fakeOnlineCount
+    if (fakeOnlineCount !== undefined && fakeOnlineCount !== null) {
+      validatedCount = Math.max(1, Math.min(150, Math.floor(fakeOnlineCount)))
+    }
+
+    // Trim nickname and set to null if empty
+    let validatedNickname = memberNicknamePlural
+    if (memberNicknamePlural !== undefined && memberNicknamePlural !== null) {
+      validatedNickname = memberNicknamePlural.trim()
+      if (validatedNickname === '') {
+        validatedNickname = null
+      }
+    }
+
+    const hub = await hubOperations.update(hubId, name, description, imageUrl, color, validatedNickname, validatedCount)
     return NextResponse.json(hub)
   } catch (error) {
     console.error('Error updating hub:', error)

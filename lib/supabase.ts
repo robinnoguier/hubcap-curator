@@ -12,8 +12,11 @@ export interface Hub {
   description?: string
   image_url?: string
   color?: string
+  member_nickname_plural?: string
+  fake_online_count?: number
   created_at: string
   updated_at: string
+  topic_count?: number
 }
 
 export interface Topic {
@@ -21,6 +24,20 @@ export interface Topic {
   hub_id: number
   name: string
   description?: string
+  image_url?: string
+  color?: string
+  created_at: string
+  updated_at: string
+  subtopic_count?: number
+}
+
+export interface Subtopic {
+  id: number
+  topic_id: number
+  name: string
+  description?: string
+  image_url?: string
+  color?: string
   created_at: string
   updated_at: string
 }
@@ -76,18 +93,33 @@ export const hubOperations = {
   async getAll() {
     const { data, error } = await supabase
       .from('hubs')
-      .select('*')
+      .select('*, topics(count)')
       .order('created_at', { ascending: false })
     
     if (error) throw error
-    return data as Hub[]
+    
+    // Transform the data to include topic_count
+    const hubsWithCounts = data?.map(hub => ({
+      ...hub,
+      topic_count: hub.topics?.[0]?.count || 0,
+      topics: undefined // Remove the topics array from the result
+    })) || []
+    
+    return hubsWithCounts as Hub[]
   },
 
   // Create a new hub
-  async create(name: string, description?: string, imageUrl?: string, color?: string) {
+  async create(name: string, description?: string, imageUrl?: string, color?: string, memberNicknamePlural?: string, fakeOnlineCount?: number) {
     const { data, error } = await supabase
       .from('hubs')
-      .insert({ name, description, image_url: imageUrl, color })
+      .insert({ 
+        name, 
+        description, 
+        image_url: imageUrl, 
+        color, 
+        member_nickname_plural: memberNicknamePlural,
+        fake_online_count: fakeOnlineCount
+      })
       .select()
       .single()
     
@@ -117,10 +149,18 @@ export const hubOperations = {
   },
 
   // Update hub
-  async update(hubId: number, name: string, description?: string, imageUrl?: string, color?: string) {
+  async update(hubId: number, name: string, description?: string, imageUrl?: string, color?: string, memberNicknamePlural?: string, fakeOnlineCount?: number) {
     const { data, error } = await supabase
       .from('hubs')
-      .update({ name, description, image_url: imageUrl, color, updated_at: new Date().toISOString() })
+      .update({ 
+        name, 
+        description, 
+        image_url: imageUrl, 
+        color, 
+        member_nickname_plural: memberNicknamePlural,
+        fake_online_count: fakeOnlineCount,
+        updated_at: new Date().toISOString() 
+      })
       .eq('id', hubId)
       .select()
       .single()
@@ -182,10 +222,10 @@ export const hubOperations = {
 
 export const topicOperations = {
   // Create a new topic
-  async create(hubId: number, name: string, description?: string) {
+  async create(hubId: number, name: string, description?: string, imageUrl?: string, color?: string) {
     const { data, error } = await supabase
       .from('topics')
-      .insert({ hub_id: hubId, name, description })
+      .insert({ hub_id: hubId, name, description, image_url: imageUrl, color })
       .select()
       .single()
     
@@ -212,25 +252,86 @@ export const topicOperations = {
   async getByHub(hubId: number) {
     const { data, error } = await supabase
       .from('topics')
-      .select('*')
+      .select('*, subtopics(count)')
       .eq('hub_id', hubId)
       .order('created_at', { ascending: false })
     
     if (error) throw error
-    return data as Topic[]
+    
+    // Transform the data to include subtopic_count
+    const topicsWithCounts = data?.map(topic => ({
+      ...topic,
+      subtopic_count: topic.subtopics?.[0]?.count || 0,
+      subtopics: undefined // Remove the subtopics array from the result
+    })) || []
+    
+    return topicsWithCounts as Topic[]
+  },
+
+  // Update topic
+  async update(topicId: number, name: string, description?: string, imageUrl?: string, color?: string) {
+    const { data, error } = await supabase
+      .from('topics')
+      .update({ 
+        name, 
+        description, 
+        image_url: imageUrl, 
+        color, 
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', topicId)
+      .select()
+      .single()
+    
+    if (error) throw error
+    return data as Topic
+  },
+
+  // Delete topic and all related data
+  async delete(topicId: number) {
+    // Get search IDs for this topic
+    const { data: searches } = await supabase
+      .from('searches')
+      .select('id')
+      .eq('topic_id', topicId)
+    
+    if (searches && searches.length > 0) {
+      const searchIds = searches.map(s => s.id)
+      
+      // Delete links first (they reference searches)
+      await supabase
+        .from('links')
+        .delete()
+        .in('search_id', searchIds)
+
+      // Delete searches (they reference topics)
+      await supabase
+        .from('searches')
+        .delete()
+        .eq('topic_id', topicId)
+    }
+
+    // Finally delete the topic
+    const { error } = await supabase
+      .from('topics')
+      .delete()
+      .eq('id', topicId)
+    
+    if (error) throw error
   }
 }
 
 export const searchOperations = {
   // Create a new search
-  async create(topic: string, searchKeywords?: string, topicId?: number, searchDescription?: string) {
+  async create(topic: string, searchKeywords?: string, topicId?: number, searchDescription?: string, subtopicId?: number) {
     const { data, error } = await supabase
       .from('searches')
       .insert({ 
         topic, 
         search_keywords: searchKeywords,
         topic_id: topicId,
-        search_description: searchDescription
+        search_description: searchDescription,
+        subtopic_id: subtopicId
       })
       .select()
       .single()

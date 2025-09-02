@@ -6,28 +6,24 @@ import { Hub, Topic } from '@/lib/supabase'
 import { generateSlug } from '@/lib/slug-utils'
 import TopicCard from '@/components/TopicCard'
 import Breadcrumbs from '@/components/Breadcrumbs'
-import GiphyImagePicker from '@/components/GiphyImagePicker'
-import ColorPicker from '@/components/ColorPicker'
+import CreateTopicModal from '@/components/CreateTopicModal'
+import CreateHubModal from '@/components/CreateHubModal'
+import DeleteHubModal from '@/components/DeleteHubModal'
 import { useHubImage } from '@/lib/hooks/useHubImage'
 import { useCache } from '@/lib/cache-context'
-import Image from 'next/image'
+import HubLogo from '@/components/HubLogo'
+import { PencilSimple, Trash, Plus, ArrowLeft } from 'phosphor-react'
 
 export default function HubDetailBySlug() {
   const [hub, setHub] = useState<Hub | null>(null)
   const [topics, setTopics] = useState<Topic[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateTopic, setShowCreateTopic] = useState(false)
-  const [newTopicName, setNewTopicName] = useState('')
-  const [newTopicDescription, setNewTopicDescription] = useState('')
-  const [creating, setCreating] = useState(false)
+  const [showEditTopic, setShowEditTopic] = useState(false)
+  const [showDeleteTopic, setShowDeleteTopic] = useState(false)
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
   const [showEditHub, setShowEditHub] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [editHubName, setEditHubName] = useState('')
-  const [editHubDescription, setEditHubDescription] = useState('')
-  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
-  const [selectedColor, setSelectedColor] = useState<string | null>(null)
-  const [updating, setUpdating] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const router = useRouter()
   const params = useParams()
   const hubSlug = params.hubSlug as string
@@ -98,39 +94,29 @@ export default function HubDetailBySlug() {
     }
   }
 
-  const handleCreateTopic = async () => {
-    if (!newTopicName.trim() || !hub) return
+  const handleCreateTopic = async (topicData: { name: string; description?: string; imageUrl?: string | null; color?: string | null }) => {
+    if (!hub) return
     
-    setCreating(true)
-    try {
-      const response = await fetch('/api/topics', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          hubId: hub.id,
-          name: newTopicName.trim(),
-          description: newTopicDescription.trim() || undefined
-        }),
-      })
-      
-      if (response.ok) {
-        const newTopic = await response.json()
-        const updatedTopics = [newTopic, ...topics]
-        setTopics(updatedTopics)
-        if (hub) {
-          cache.invalidateCache('hubTopics', hub.id)
-          cache.setHubWithTopics(hub.id, { hub, topics: updatedTopics })
-        }
-        setShowCreateTopic(false)
-        setNewTopicName('')
-        setNewTopicDescription('')
-      }
-    } catch (error) {
-      console.error('Error creating topic:', error)
-    } finally {
-      setCreating(false)
+    const response = await fetch('/api/topics', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        hubId: hub.id,
+        name: topicData.name,
+        description: topicData.description,
+        imageUrl: topicData.imageUrl,
+        color: topicData.color
+      }),
+    })
+    
+    if (response.ok) {
+      const newTopic = await response.json()
+      const updatedTopics = [newTopic, ...topics]
+      setTopics(updatedTopics)
+      cache.invalidateCache('hubTopics', hub.id)
+      cache.setHubWithTopics(hub.id, { hub, topics: updatedTopics })
     }
   }
 
@@ -143,19 +129,12 @@ export default function HubDetailBySlug() {
   }
 
   const handleEditClick = () => {
-    if (hub) {
-      setEditHubName(hub.name)
-      setEditHubDescription(hub.description || '')
-      setSelectedImageUrl(hub.image_url || null)
-      setSelectedColor(hub.color || null)
-      setShowEditHub(true)
-    }
+    setShowEditHub(true)
   }
 
-  const handleUpdateHub = async () => {
-    if (!editHubName.trim() || !hub) return
+  const handleUpdateHub = async (hubData: { name: string; description?: string; imageUrl?: string | null; color?: string | null; memberNicknamePlural?: string | null; fakeOnlineCount?: number | null }) => {
+    if (!hub) return
     
-    setUpdating(true)
     try {
       const response = await fetch(`/api/hubs/${hub.id}`, {
         method: 'PATCH',
@@ -163,10 +142,12 @@ export default function HubDetailBySlug() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: editHubName.trim(),
-          description: editHubDescription.trim() || undefined,
-          imageUrl: selectedImageUrl,
-          color: selectedColor
+          name: hubData.name,
+          description: hubData.description,
+          imageUrl: hubData.imageUrl,
+          color: hubData.color,
+          memberNicknamePlural: hubData.memberNicknamePlural,
+          fakeOnlineCount: hubData.fakeOnlineCount
         }),
       })
       
@@ -185,29 +166,93 @@ export default function HubDetailBySlug() {
       }
     } catch (error) {
       console.error('Error updating hub:', error)
-    } finally {
-      setUpdating(false)
+      throw error
     }
   }
 
   const handleDeleteHub = async () => {
     if (!hub) return
     
-    setDeleting(true)
+    const response = await fetch(`/api/hubs/${hub.id}`, {
+      method: 'DELETE'
+    })
+    
+    if (response.ok) {
+      cache.invalidateCache('hubs')
+      cache.invalidateCache('hubTopics', hub.id)
+      router.push('/')
+    }
+  }
+
+  const handleTopicEdit = (topicId: number) => {
+    const topic = topics.find(t => t.id === topicId)
+    if (topic) {
+      setSelectedTopic(topic)
+      setShowEditTopic(true)
+    }
+  }
+
+  const handleTopicDelete = (topicId: number) => {
+    const topic = topics.find(t => t.id === topicId)
+    if (topic) {
+      setSelectedTopic(topic)
+      setShowDeleteTopic(true)
+    }
+  }
+
+  const handleEditTopic = async (topicData: { name: string; description?: string; imageUrl?: string | null; color?: string | null }) => {
+    if (!selectedTopic || !hub) return
+    
     try {
-      const response = await fetch(`/api/hubs/${hub.id}`, {
+      const response = await fetch(`/api/topics/${selectedTopic.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: topicData.name,
+          description: topicData.description,
+          imageUrl: topicData.imageUrl,
+          color: topicData.color
+        }),
+      })
+      
+      if (response.ok) {
+        const updatedTopic = await response.json()
+        const updatedTopics = topics.map(topic => 
+          topic.id === selectedTopic.id ? updatedTopic : topic
+        )
+        setTopics(updatedTopics)
+        cache.invalidateCache('hubTopics', hub.id)
+        cache.setHubWithTopics(hub.id, { hub, topics: updatedTopics })
+        setShowEditTopic(false)
+        setSelectedTopic(null)
+      }
+    } catch (error) {
+      console.error('Error updating topic:', error)
+      throw error
+    }
+  }
+
+  const handleDeleteTopic = async () => {
+    if (!selectedTopic || !hub) return
+    
+    try {
+      const response = await fetch(`/api/topics/${selectedTopic.id}`, {
         method: 'DELETE'
       })
       
       if (response.ok) {
-        cache.invalidateCache('hubs')
+        const updatedTopics = topics.filter(topic => topic.id !== selectedTopic.id)
+        setTopics(updatedTopics)
         cache.invalidateCache('hubTopics', hub.id)
-        router.push('/')
+        cache.setHubWithTopics(hub.id, { hub, topics: updatedTopics })
+        setShowDeleteTopic(false)
+        setSelectedTopic(null)
       }
     } catch (error) {
-      console.error('Error deleting hub:', error)
-    } finally {
-      setDeleting(false)
+      console.error('Error deleting topic:', error)
+      throw error
     }
   }
 
@@ -221,7 +266,7 @@ export default function HubDetailBySlug() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {Array.from({ length: 4 }, (_, i) => (
-                <div key={i} className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div key={i} className="white-10 rounded-lg p-6 border border-gray-700">
                   <div className="h-6 bg-gray-600 rounded w-3/4 mb-3"></div>
                   <div className="h-4 bg-gray-700 rounded w-full mb-2"></div>
                   <div className="h-4 bg-gray-700 rounded w-2/3"></div>
@@ -260,7 +305,7 @@ export default function HubDetailBySlug() {
       {/* Color Overlay */}
       {hub.color && (
         <div 
-          className="absolute h-2 inset-0 pointer-events-none"
+          className="absolute h-1 inset-0 pointer-events-none"
           style={{
             backgroundColor: hub.color,
             opacity: 1
@@ -270,12 +315,24 @@ export default function HubDetailBySlug() {
       
       <div className="container mx-auto px-4 py-8 max-w-7xl relative z-10">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex justify-between items-start mb-6">
-            <Breadcrumbs items={[
-              { label: 'Hubs', href: '/' },
-              { label: hub.name, active: true }
-            ]} />
+        <div className="mb-16">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-4">
+              {/* Back Button */}
+              <button
+                onClick={() => router.push('/')}
+                className="bg-surface-dark hover:bg-gray-700 border border-gray-600 rounded-full p-2.5 transition-colors shadow-lg flex-shrink-0 flex items-center justify-center"
+              >
+                <ArrowLeft size={20} className="text-white" />
+              </button>
+              
+              <div className="flex items-center mt-4">
+                <Breadcrumbs items={[
+                  { label: 'Hubs', href: '/', isHome: true },
+                  { label: hub.name, active: true, imageUrl: hub.image_url, hubColor: hub.color, isHub: true }
+                ]} />
+              </div>
+            </div>
             
             {/* Edit and Delete Buttons */}
             <div className="flex gap-2">
@@ -283,55 +340,33 @@ export default function HubDetailBySlug() {
                 onClick={handleEditClick}
                 className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors flex items-center gap-2"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
+                <PencilSimple size={16} />
                 Edit
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors flex items-center gap-2"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
+                <Trash size={16} />
                 Delete
               </button>
             </div>
           </div>
           
           {/* Large Centered Hub Display */}
-          <div className="text-center mb-8">
+          <div className="text-center mb-32">
             <div className="flex justify-center mb-6">
-              <div className="w-32 h-32 relative overflow-hidden rounded-2xl shadow-lg">
-                {!hub.image_url && imageLoading && (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                    <div className="w-8 h-8 border-2 border-white/30 border-t-white/70 rounded-full animate-spin"></div>
-                  </div>
-                )}
-                {displayImageUrl && (
-                  <Image
-                    src={displayImageUrl}
-                    alt={`${hub.name} icon`}
-                    width={128}
-                    height={128}
-                    className="w-full h-full object-cover"
-                    unoptimized
-                  />
-                )}
-                {!displayImageUrl && !imageLoading && (
-                  <div 
-                    className="w-full h-full flex items-center justify-center text-white font-bold text-4xl"
-                    style={{ 
-                      backgroundColor: hub.color || 'rgba(255, 255, 255, 0.1)',
-                      color: hub.color ? '#ffffff' : 'rgba(255, 255, 255, 0.5)'
-                    }}
-                  >
-                    {hub.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <HubLogo
+                  hubName={hub.name}
+                  imageUrl={displayImageUrl}
+                  color={hub.color}
+                  size={128}
+                  loading={imageLoading}
+                  showLoading={!hub.image_url}
+                  borderWidth={2}
+                  className="drop-shadow-lg"
+                />
               </div>
-            </div>
             
             <h1 className="text-5xl font-bold mb-4 text-white">
               {hub.name}
@@ -346,21 +381,27 @@ export default function HubDetailBySlug() {
                 No description provided
               </p>
             )}
+            
+            {/* Online badge */}
+            <div className="mt-6">
+              <span className="inline-flex items-center px-4 py-2 bg-gray-800 bg-opacity-50 rounded-full text-sm text-gray-300">
+                <span className="text-green-400 mr-2">🟢</span>
+                {hub.fake_online_count || 12} {hub.member_nickname_plural || 'members'} online
+              </span>
+            </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {/* Create New Topic Card */}
           <div 
-            className="bg-gray-800 rounded-lg p-6 border border-gray-600 border-dashed hover:border-hubcap-accent transition-all duration-200 cursor-pointer flex flex-col items-center justify-center min-h-[160px]"
+            className="bg-surface-dark rounded-lg p-6 border border-gray-600 border-dashed hover:border-hubcap-accent transition-all duration-200 cursor-pointer flex flex-col items-center justify-center min-h-[160px]"
             onClick={() => setShowCreateTopic(true)}
           >
             <div className="w-12 h-12 rounded-full bg-hubcap-accent bg-opacity-20 flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-hubcap-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              <Plus size={24} className="text-white" />
             </div>
-            <h3 className="text-lg font-semibold text-hubcap-accent">Create New Topic</h3>
+            <h3 className="text-lg font-semibold text-white">Create New Topic</h3>
             <p className="text-sm text-gray-400 text-center mt-2">
               Add a topic to this hub
             </p>
@@ -372,6 +413,8 @@ export default function HubDetailBySlug() {
               key={topic.id}
               topic={topic}
               onClick={handleTopicClick}
+              onEdit={handleTopicEdit}
+              onDelete={handleTopicDelete}
             />
           ))}
         </div>
@@ -379,23 +422,43 @@ export default function HubDetailBySlug() {
         {topics.length === 0 && (
           <div className="text-center mt-12 text-gray-400">
             <p className="text-lg mb-2">No topics yet!</p>
-            <p>Create your first topic to start curating content for <span className="text-hubcap-accent">{hub.name}</span>.</p>
+            <p>Create your first topic to start curating content for <span className="text-white">{hub.name}</span>.</p>
           </div>
         )}
       </div>
 
-      {/* Create Topic Modal */}
-      {showCreateTopic && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-             style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
+      <CreateTopicModal
+        isOpen={showCreateTopic}
+        onClose={() => setShowCreateTopic(false)}
+        onCreate={handleCreateTopic}
+      />
+
+      <CreateTopicModal
+        isOpen={showEditTopic}
+        onClose={() => {
+          setShowEditTopic(false)
+          setSelectedTopic(null)
+        }}
+        onCreate={handleEditTopic}
+        isEditMode={true}
+        initialData={selectedTopic ? {
+          name: selectedTopic.name,
+          description: selectedTopic.description,
+          imageUrl: selectedTopic.image_url,
+          color: selectedTopic.color
+        } : undefined}
+      />
+
+      {/* Simple Delete Confirmation Modal for Topics */}
+      {showDeleteTopic && selectedTopic && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface-dark rounded-lg p-6 w-full max-w-md border border-gray-700">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-hubcap-accent">Create New Topic</h2>
+              <h2 className="text-xl font-semibold text-white">Delete Topic</h2>
               <button
                 onClick={() => {
-                  setShowCreateTopic(false)
-                  setNewTopicName('')
-                  setNewTopicDescription('')
+                  setShowDeleteTopic(false)
+                  setSelectedTopic(null)
                 }}
                 className="text-gray-400 hover:text-white"
               >
@@ -403,188 +466,54 @@ export default function HubDetailBySlug() {
               </button>
             </div>
             
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Topic Name *
-                </label>
-                <input
-                  type="text"
-                  value={newTopicName}
-                  onChange={(e) => setNewTopicName(e.target.value)}
-                  placeholder="e.g., Nutrition, Training, Recovery"
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-hubcap-accent focus:border-transparent text-white placeholder-gray-400"
-                  maxLength={50}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Description (optional)
-                </label>
-                <textarea
-                  value={newTopicDescription}
-                  onChange={(e) => setNewTopicDescription(e.target.value)}
-                  placeholder="Describe what this topic will cover..."
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-hubcap-accent focus:border-transparent text-white placeholder-gray-400 resize-none"
-                  rows={3}
-                  maxLength={200}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => {
-                  setShowCreateTopic(false)
-                  setNewTopicName('')
-                  setNewTopicDescription('')
-                }}
-                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
-                disabled={creating}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateTopic}
-                disabled={!newTopicName.trim() || creating}
-                className="flex-1 px-4 py-2 bg-hubcap-accent hover:bg-opacity-80 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-semibold transition-colors"
-              >
-                {creating ? 'Creating...' : 'Create Topic'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Hub Modal */}
-      {showEditHub && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
-             style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg border border-gray-700 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-hubcap-accent">Edit Hub</h2>
-              <button
-                onClick={() => setShowEditHub(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
+            <p className="text-gray-300 mb-6">
+              Are you sure you want to delete "<span className="font-semibold text-white">{selectedTopic.name}</span>"? This action cannot be undone.
+            </p>
             
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Hub Name *
-                </label>
-                <input
-                  type="text"
-                  value={editHubName}
-                  onChange={(e) => setEditHubName(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-hubcap-accent focus:border-transparent text-white placeholder-gray-400"
-                  maxLength={50}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Description (optional)
-                </label>
-                <textarea
-                  value={editHubDescription}
-                  onChange={(e) => setEditHubDescription(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-hubcap-accent focus:border-transparent text-white placeholder-gray-400 resize-none"
-                  rows={3}
-                  maxLength={200}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Choose an Image
-                </label>
-                <GiphyImagePicker
-                  query={editHubName}
-                  selectedImageUrl={selectedImageUrl}
-                  onImageSelect={setSelectedImageUrl}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Choose a Color
-                </label>
-                <ColorPicker
-                  selectedColor={selectedColor}
-                  onColorSelect={setSelectedColor}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowEditHub(false)}
-                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
-                disabled={updating}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdateHub}
-                disabled={!editHubName.trim() || updating}
-                className="flex-1 px-4 py-2 bg-hubcap-accent hover:bg-opacity-80 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-semibold transition-colors"
-              >
-                {updating ? 'Updating...' : 'Update Hub'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
-             style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-red-400">Delete Hub</h2>
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="text-gray-400 hover:text-white"
-                disabled={deleting}
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="mb-6">
-              <p className="text-gray-300 mb-3">
-                Are you sure you want to delete <strong className="text-white">"{hub?.name}"</strong>?
-              </p>
-              <p className="text-red-400 text-sm">
-                This will permanently delete the hub and all of its topics, searches, and links. This action cannot be undone.
-              </p>
-            </div>
-
             <div className="flex gap-3">
               <button
-                onClick={() => setShowDeleteConfirm(false)}
+                onClick={() => {
+                  setShowDeleteTopic(false)
+                  setSelectedTopic(null)
+                }}
                 className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
-                disabled={deleting}
               >
                 Cancel
               </button>
               <button
-                onClick={handleDeleteHub}
-                disabled={deleting}
-                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed rounded-md font-semibold transition-colors text-white"
+                onClick={handleDeleteTopic}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-md font-semibold transition-colors"
               >
-                {deleting ? 'Deleting...' : 'Delete Hub'}
+                Delete
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <CreateHubModal
+        isOpen={showEditHub}
+        onClose={() => setShowEditHub(false)}
+        onCreate={handleUpdateHub}
+        isEditMode={true}
+        initialData={hub ? {
+          name: hub.name,
+          description: hub.description,
+          imageUrl: hub.image_url,
+          color: hub.color,
+          memberNicknamePlural: hub.member_nickname_plural,
+          fakeOnlineCount: hub.fake_online_count
+        } : undefined}
+      />
+
+
+      <DeleteHubModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onDelete={handleDeleteHub}
+        hub={hub}
+      />
+
     </main>
   )
 }

@@ -12,7 +12,8 @@ module.exports = {
           bg: '#121212',
           text: '#FFFFFF',
           accent: '#F83400',
-        }
+        },
+        'surface-dark': '#1A1A1A',
       },
       fontFamily: {
         'outfit': ['var(--font-outfit)', 'sans-serif'],

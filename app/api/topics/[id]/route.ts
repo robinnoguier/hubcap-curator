@@ -37,3 +37,66 @@ export async function GET(
     )
   }
 }
+
+// PUT /api/topics/[id] - Update topic
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const topicId = parseInt(params.id)
+    
+    if (isNaN(topicId)) {
+      return NextResponse.json(
+        { error: 'Invalid topic ID' },
+        { status: 400 }
+      )
+    }
+
+    const { name, description, imageUrl, color } = await request.json()
+    
+    if (!name) {
+      return NextResponse.json(
+        { error: 'Topic name is required' },
+        { status: 400 }
+      )
+    }
+
+    const updatedTopic = await topicOperations.update(topicId, name, description, imageUrl, color)
+    
+    return NextResponse.json(updatedTopic)
+  } catch (error) {
+    console.error('Error updating topic:', error)
+    return NextResponse.json(
+      { error: 'Failed to update topic' },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE /api/topics/[id] - Delete topic
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const topicId = parseInt(params.id)
+    
+    if (isNaN(topicId)) {
+      return NextResponse.json(
+        { error: 'Invalid topic ID' },
+        { status: 400 }
+      )
+    }
+
+    await topicOperations.delete(topicId)
+    
+    return NextResponse.json({ message: 'Topic deleted successfully' })
+  } catch (error) {
+    console.error('Error deleting topic:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete topic' },
+      { status: 500 }
+    )
+  }
+}

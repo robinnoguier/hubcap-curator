@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from '@/lib/types'
+import { Play, Image as ImageIcon, Article, X, Check, Copy } from 'phosphor-react'
 
 interface LinkWithId extends Link {
   id: number;
@@ -11,9 +12,11 @@ interface ResultCardProps {
   onFeedback: (linkId: number, feedback: 'like' | 'discard') => void
   onToggleVideo?: (linkId: number) => void
   onRemove: (linkId: number) => void
+  isSelected?: boolean
+  onSelectionChange?: (linkId: number, selected: boolean) => void
 }
 
-export default function ResultCard({ link, onFeedback, onToggleVideo, onRemove }: ResultCardProps) {
+export default function ResultCard({ link, onFeedback, onToggleVideo, onRemove, isSelected = false, onSelectionChange }: ResultCardProps) {
   const [isCopied, setIsCopied] = useState(false)
   const handlePlayClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -29,6 +32,13 @@ export default function ResultCard({ link, onFeedback, onToggleVideo, onRemove }
 
   const handleCardClick = () => {
     window.open(link.url, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleCheckboxChange = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (onSelectionChange) {
+      onSelectionChange(link.id, !isSelected)
+    }
   }
 
   const handleCopyLink = async (e: React.MouseEvent) => {
@@ -63,15 +73,30 @@ export default function ResultCard({ link, onFeedback, onToggleVideo, onRemove }
 
   return (
     <div 
-      className="bg-gray-800 rounded-lg overflow-hidden hover-scale hover:bg-gray-750 transition-all duration-200 border border-gray-700 hover:border-gray-600 cursor-pointer relative flex flex-col"
+      className="white-10 rounded-lg overflow-hidden hover-scale hover:bg-gray-750 transition-all duration-200 border border-gray-700 hover:border-gray-600 cursor-pointer relative flex flex-col"
       onClick={handleCardClick}
     >
+      {/* Selection Checkbox - positioned on the left */}
+      {onSelectionChange && (
+        <button
+          onClick={handleCheckboxChange}
+          className={`absolute top-2 left-2 w-6 h-6 rounded border-2 transition-all duration-200 flex items-center justify-center z-10 ${
+            isSelected 
+              ? 'bg-blue-500 border-blue-500' 
+              : 'bg-gray-900 bg-opacity-80 border-gray-600 hover:border-blue-400'
+          }`}
+          title="Select"
+        >
+          {isSelected && <Check size={14} weight="bold" className="text-white" />}
+        </button>
+      )}
+      
       <button
         onClick={handleRemove}
         className="absolute top-2 right-2 w-6 h-6 rounded-full bg-gray-900 bg-opacity-80 hover:bg-red-500 transition-all duration-200 flex items-center justify-center text-white text-xs z-10"
         title="Remove"
       >
-        ✕
+        <X size={12} />
       </button>
 
       {link.isPlaying && videoId && (
@@ -108,9 +133,7 @@ export default function ResultCard({ link, onFeedback, onToggleVideo, onRemove }
               onClick={handlePlayClick}
             >
               <div className="w-16 h-16 bg-red-600 bg-opacity-80 rounded-full flex items-center justify-center hover:bg-red-500 transition-colors">
-                <svg className="w-6 h-6 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
+                <Play size={24} weight="fill" className="text-white ml-1" />
               </div>
             </div>
           )}
@@ -118,21 +141,15 @@ export default function ResultCard({ link, onFeedback, onToggleVideo, onRemove }
             <div className="absolute top-2 left-2">
               {isPodcast ? (
                 <div className="bg-purple-600 bg-opacity-80 rounded-full p-2">
-                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15V7l5 5-5 5z"/>
-                  </svg>
+                  <Play size={16} weight="fill" className="text-white" />
                 </div>
               ) : isImage ? (
                 <div className="bg-green-600 bg-opacity-80 rounded-full p-2">
-                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-                  </svg>
+                  <ImageIcon size={16} weight="fill" className="text-white" />
                 </div>
               ) : (
                 <div className="bg-blue-600 bg-opacity-80 rounded-full p-2">
-                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-                  </svg>
+                  <Article size={16} weight="fill" className="text-white" />
                 </div>
               )}
             </div>
@@ -145,27 +162,19 @@ export default function ResultCard({ link, onFeedback, onToggleVideo, onRemove }
           <div className="text-center">
             {isVideo ? (
               <div className="w-16 h-16 bg-red-600 bg-opacity-80 rounded-full flex justify-start items-start mx-auto mb-2">
-                <svg className="w-6 h-6 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
+                <Play size={24} weight="fill" className="text-white ml-1" />
               </div>
             ) : isPodcast ? (
               <div className="bg-purple-600 bg-opacity-80 rounded-full p-4 mx-auto mb-2">
-                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15V7l5 5-5 5z"/>
-                </svg>
+                <Play size={32} weight="fill" className="text-white" />
               </div>
             ) : isImage ? (
               <div className="bg-green-600 bg-opacity-80 rounded-full p-4 mx-auto mb-2">
-                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-                </svg>
+                <ImageIcon size={32} weight="fill" className="text-white" />
               </div>
             ) : (
               <div className="bg-blue-600 bg-opacity-80 rounded-full p-4 mx-auto mb-2">
-                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-                </svg>
+                <Article size={32} weight="fill" className="text-white" />
               </div>
             )}
             <p className="text-gray-300 text-sm">
@@ -188,7 +197,7 @@ export default function ResultCard({ link, onFeedback, onToggleVideo, onRemove }
               ? 'bg-purple-600 text-white'
               : link.source === 'Unsplash'
               ? 'bg-emerald-500 text-white'
-              : 'bg-hubcap-accent bg-opacity-20 text-hubcap-accent'
+              : 'bg-hubcap-accent bg-opacity-20 text-white'
           }`}>
             {link.source}
           </span>
@@ -208,16 +217,12 @@ export default function ResultCard({ link, onFeedback, onToggleVideo, onRemove }
         >
           {isCopied ? (
             <>
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+              <Check size={12} weight="bold" />
               Copied
             </>
           ) : (
             <>
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
+              <Copy size={12} />
               Copy Link
             </>
           )}

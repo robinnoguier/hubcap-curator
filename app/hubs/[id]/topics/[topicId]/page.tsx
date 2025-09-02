@@ -24,10 +24,12 @@ interface TopicWithHub {
   id: number
   name: string
   description?: string
+  image_url?: string
   hub: {
     id: number
     name: string
     description?: string
+    image_url?: string
   }
 }
 
@@ -441,14 +443,14 @@ export default function TopicSearch() {
         {/* Breadcrumb Navigation */}
         <div className="mb-8">
           <Breadcrumbs items={[
-            { label: 'Hubs', href: '/' },
-            { label: topicInfo.hub.name, href: `/hubs/${hubId}` },
-            { label: topicInfo.name, active: true }
+            { label: 'Hubs', href: '/', isHome: true },
+            { label: topicInfo.hub.name, href: `/hubs/${hubId}`, imageUrl: topicInfo.hub.image_url },
+            { label: topicInfo.name, active: true, imageUrl: topicInfo.image_url }
           ]} />
           
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
+          <div className="white-10 rounded-lg p-6 border border-gray-700 mb-8">
             <h1 className="text-3xl font-bold mb-2">
-              <span className="text-hubcap-accent">{topicInfo.hub.name}</span> • {topicInfo.name}
+              <span className="text-white">{topicInfo.hub.name}</span> • {topicInfo.name}
             </h1>
             <div className="text-gray-300 space-y-1">
               {topicInfo.hub.description && (
@@ -463,8 +465,8 @@ export default function TopicSearch() {
 
         {/* Search Interface */}
         <div className="max-w-4xl mx-auto mb-8">
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h2 className="text-xl font-semibold mb-4 text-hubcap-accent">Search within this topic</h2>
+          <div className="white-10 rounded-lg p-6 border border-gray-700">
+            <h2 className="text-xl font-semibold mb-4 text-white">Search within this topic</h2>
             
             <div className="space-y-4">
               <div>
@@ -596,7 +598,7 @@ export default function TopicSearch() {
             {results && (results.long_form_videos.length > 0 || results.short_form_videos.length > 0 || results.articles.length > 0 || results.podcasts.length > 0 || results.images.length > 0) && !searching && selectedSearchId !== 'all' && (
               <div className="text-center py-4">
                 <p className="text-gray-400 text-sm">
-                  Showing links from: <span className="text-hubcap-accent capitalize">"{allSearches.find(s => s.searchId === selectedSearchId)?.query}"</span>
+                  Showing links from: <span className="text-white capitalize">"{allSearches.find(s => s.searchId === selectedSearchId)?.query}"</span>
                 </p>
               </div>
             )}
@@ -669,7 +671,7 @@ function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, is
 
   return (
     <section className="fade-in">
-      <h2 className="text-2xl font-bold mb-6 text-hubcap-accent">
+      <h2 className="text-2xl font-bold mb-6 text-white">
         {title}
         {isLoading && <span className="ml-2 text-sm text-gray-400">Loading...</span>}
       </h2>
@@ -696,7 +698,7 @@ function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, is
 
 function SkeletonCard() {
   return (
-    <div className="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 animate-pulse">
+    <div className="white-10 rounded-lg overflow-hidden border border-gray-700 animate-pulse">
       <div className="w-full h-48 bg-gray-700"></div>
       <div className="p-4">
         <div className="flex justify-start items-start mb-3">

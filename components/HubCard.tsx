@@ -4,15 +4,20 @@ import { Hub } from '@/lib/supabase'
 import { generateSlug } from '@/lib/slug-utils'
 import { useRouter } from 'next/navigation'
 import { useHubImage } from '@/lib/hooks/useHubImage'
-import Image from 'next/image'
+import { PencilSimple, Trash } from 'phosphor-react'
+import DropdownActions, { DropdownAction } from './DropdownActions'
+import HubLogo from './HubLogo'
 
 interface HubCardProps {
   hub: Hub
   onClick?: (hubId: number) => void
+  onEdit?: (hubId: number) => void
+  onDelete?: (hubId: number) => void
 }
 
-export default function HubCard({ hub, onClick }: HubCardProps) {
+export default function HubCard({ hub, onClick, onEdit, onDelete }: HubCardProps) {
   const router = useRouter()
+  
   // Only fetch from Giphy if no image_url is stored
   const { imageUrl: giphyImageUrl, loading, error } = useHubImage(hub.image_url ? '' : hub.name)
   
@@ -35,9 +40,30 @@ export default function HubCard({ hub, onClick }: HubCardProps) {
 
   const isLoadingImage = !hub.image_url && loading
 
+  // Create dropdown actions
+  const actions: DropdownAction[] = []
+  
+  if (onEdit) {
+    actions.push({
+      icon: <PencilSimple size={14} />,
+      label: 'Edit',
+      onClick: () => onEdit(hub.id),
+      variant: 'default'
+    })
+  }
+  
+  if (onDelete) {
+    actions.push({
+      icon: <Trash size={14} />,
+      label: 'Delete',
+      onClick: () => onDelete(hub.id),
+      variant: 'danger'
+    })
+  }
+
   return (
     <div
-      className="rounded-lg p-6 border hover:border-opacity-60 transition-all duration-200 cursor-pointer"
+      className="group relative rounded-lg p-6 border hover:border-opacity-80 transition-all duration-200 cursor-pointer"
       style={{
         borderColor: hub.color ? hub.color + '40' : 'rgba(255, 255, 255, 0.1)',
         backgroundColor: hub.color ? hub.color + '10' : 'rgba(255, 255, 255, 0.1)',
@@ -45,38 +71,26 @@ export default function HubCard({ hub, onClick }: HubCardProps) {
       }}
       onClick={handleClick}
     >
+      {/* Dropdown Actions */}
+      <DropdownActions actions={actions} />
       <div className="flex flex-col items-center justify-center text-center gap-3 min-h-[120px]">
-        <div className="w-16 h-16 flex-shrink-0 relative overflow-hidden rounded-lg bg-white/5">
-          {isLoadingImage && (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-white/30 border-t-white/70 rounded-full animate-spin"></div>
-            </div>
-          )}
-          {!isLoadingImage && displayImageUrl && !error && (
-            <Image
-              src={displayImageUrl}
-              alt={`${hub.name} icon`}
-              width={64}
-              height={64}
-              className="w-full h-full object-cover"
-              unoptimized
-            />
-          )}
-          {!isLoadingImage && (!displayImageUrl || error) && (
-            <div 
-              className="w-full h-full flex items-center justify-center text-white font-semibold text-xl"
-              style={{ 
-                backgroundColor: hub.color || 'rgba(255, 255, 255, 0.1)',
-                color: hub.color ? '#ffffff' : 'rgba(255, 255, 255, 0.5)'
-              }}
-            >
-              {hub.name.charAt(0).toUpperCase()}
-            </div>
-          )}
-        </div>
+        <HubLogo
+          hubName={hub.name}
+          imageUrl={displayImageUrl}
+          color={hub.color}
+          size={80}
+          loading={isLoadingImage}
+          showLoading={!hub.image_url}
+          borderWidth={6}
+        />
         <h2 className="text-xl font-semibold text-white">
           {hub.name}
         </h2>
+        {hub.topic_count !== undefined && hub.topic_count > 0 && (
+          <p className="text-sm text-gray-400">
+            {hub.topic_count} {hub.topic_count === 1 ? 'topic' : 'topics'}
+          </p>
+        )}
       </div>
     </div>
   )

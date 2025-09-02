@@ -15,13 +15,14 @@ export async function GET(
       )
     }
 
-    // Get all searches for this topic with their links
+    // Get all searches for this topic with their links (excluding subtopic searches)
     const { data: searches, error: searchError } = await supabase
       .from('searches')
       .select(`
         id,
         topic,
         search_description,
+        search_keywords,
         created_at,
         links (
           id,
@@ -38,6 +39,7 @@ export async function GET(
         )
       `)
       .eq('topic_id', topicId)
+      .is('subtopic_id', null) // Only get searches without subtopic_id
       .eq('links.is_removed', false)
       .order('created_at', { ascending: false })
 
@@ -46,7 +48,7 @@ export async function GET(
     // Process searches and their links
     const searchesData = searches?.map(search => ({
       id: search.id,
-      query: search.topic,
+      query: search.search_keywords || search.topic, // Use search_keywords (original query) if available
       description: search.search_description,
       created_at: search.created_at,
       links: search.links?.map(link => ({

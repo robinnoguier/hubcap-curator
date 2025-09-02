@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Image from 'next/image'
-import { ArrowsClockwise, Check, MagnifyingGlass } from 'phosphor-react'
+import { ArrowsClockwise, MagnifyingGlass } from 'phosphor-react'
+import HubLogo from './HubLogo'
 
 interface GiphyImage {
   id: string
@@ -10,15 +10,25 @@ interface GiphyImage {
   title: string
 }
 
-interface GiphyImagePickerProps {
+interface HubGiphyImagePickerProps {
   query: string
   selectedImageUrl: string | null
   onImageSelect: (imageUrl: string) => void
   showQuery?: boolean
   onQueryGenerate?: () => Promise<string>
+  hubName: string
+  hubColor?: string | null
 }
 
-export default function GiphyImagePicker({ query, selectedImageUrl, onImageSelect, showQuery = false, onQueryGenerate }: GiphyImagePickerProps) {
+export default function HubGiphyImagePicker({ 
+  query, 
+  selectedImageUrl, 
+  onImageSelect, 
+  showQuery = false, 
+  onQueryGenerate,
+  hubName,
+  hubColor
+}: HubGiphyImagePickerProps) {
   const [images, setImages] = useState<GiphyImage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,7 +66,13 @@ export default function GiphyImagePicker({ query, selectedImageUrl, onImageSelec
         }
 
         const data = await response.json()
-        setImages(data.images || [])
+        const fetchedImages = data.images || []
+        setImages(fetchedImages)
+        
+        // Auto-select first image if no image is currently selected
+        if (fetchedImages.length > 0 && !selectedImageUrl) {
+          onImageSelect(fetchedImages[0].url)
+        }
       } catch (err) {
         let errorMessage = err instanceof Error ? err.message : 'Unknown error'
         
@@ -123,18 +139,10 @@ export default function GiphyImagePicker({ query, selectedImageUrl, onImageSelec
     setOffset(0)
   }
 
-  if (!query.trim() && !isUsingCustomQuery) {
-    return (
-      <div className="text-center text-gray-400 py-8">
-        <p>Enter a name to see image suggestions</p>
-      </div>
-    )
-  }
-
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-gray-300">Choose an Image</span>
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-sm font-medium text-gray-300">Choose Hub Image</span>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowCustomSearch(!showCustomSearch)}
@@ -156,6 +164,20 @@ export default function GiphyImagePicker({ query, selectedImageUrl, onImageSelec
             />
           </button>
         </div>
+      </div>
+      
+      {/* Hub Logo Preview */}
+      <div className="flex justify-center mb-6">
+        <HubLogo
+          hubName={hubName}
+          imageUrl={selectedImageUrl}
+          color={hubColor}
+          size={100}
+          loading={loading && !selectedImageUrl}
+          showLoading={true}
+          borderWidth={2}
+          className="drop-shadow-lg"
+        />
       </div>
       
       {/* Display current search query */}
@@ -203,7 +225,7 @@ export default function GiphyImagePicker({ query, selectedImageUrl, onImageSelec
               value={customQuery}
               onChange={(e) => setCustomQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCustomSearch()}
-              placeholder={`e.g., "${query} logo" or "abstract ${query}"`}
+              placeholder={`e.g., "${hubName} logo" or "abstract ${hubName}"`}
               className="flex-1 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-hubcap-accent"
             />
             <button
@@ -220,7 +242,11 @@ export default function GiphyImagePicker({ query, selectedImageUrl, onImageSelec
         </div>
       )}
 
-      {loading ? (
+      {!activeQuery.trim() ? (
+        <div className="text-center text-gray-400 py-8">
+          <p>Enter a hub name to see image suggestions</p>
+        </div>
+      ) : loading ? (
         <div className="text-center py-8">
           <div className="inline-flex items-center gap-2 text-gray-300">
             <div className="w-4 h-4 border-2 border-hubcap-accent border-t-transparent rounded-full animate-spin"></div>
@@ -245,6 +271,7 @@ export default function GiphyImagePicker({ query, selectedImageUrl, onImageSelec
         </div>
       ) : (
         <div className="grid grid-cols-5 gap-2">
+          {/* Image Options */}
           {images.map((image) => (
             <button
               key={image.id}
@@ -256,17 +283,14 @@ export default function GiphyImagePicker({ query, selectedImageUrl, onImageSelec
               }`}
               title={image.title}
             >
-              <Image
+              <img
                 src={image.url}
                 alt={image.title}
-                width={64}
-                height={64}
                 className="w-full h-full object-cover"
-                unoptimized
               />
               {selectedImageUrl === image.url && (
                 <div className="absolute inset-0 bg-hubcap-accent bg-opacity-20 flex items-center justify-center">
-                  <Check size={16} className="text-white" weight="bold" />
+                  <div className="w-3 h-3 bg-hubcap-accent rounded-full"></div>
                 </div>
               )}
             </button>

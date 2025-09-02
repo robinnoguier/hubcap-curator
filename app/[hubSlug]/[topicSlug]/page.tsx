@@ -7,7 +7,14 @@ import { supabase } from '@/lib/supabase'
 import { generateSlug } from '@/lib/slug-utils'
 import ResultCard from '@/components/ResultCard'
 import Breadcrumbs from '@/components/Breadcrumbs'
+import CreateTopicModal from '@/components/CreateTopicModal'
 import { useCache } from '@/lib/cache-context'
+import Image from 'next/image'
+import { PencilSimple, Trash, MagnifyingGlass, Plus, ArrowLeft } from 'phosphor-react'
+import CreateSubtopicModal from '@/components/CreateSubtopicModal'
+import SubtopicCard from '@/components/SubtopicCard'
+import { Subtopic } from '@/lib/supabase'
+import SearchModal from '@/components/SearchModal'
 
 interface LinkWithId extends Link {
   id: number;
@@ -26,10 +33,14 @@ interface TopicWithHub {
   id: number
   name: string
   description?: string
+  image_url?: string
+  color?: string
   hub: {
     id: number
     name: string
     description?: string
+    image_url?: string
+    color?: string
   }
 }
 
@@ -52,14 +63,17 @@ interface TopicLinksResponse {
 
 export default function TopicSearchBySlug() {
   const [topicInfo, setTopicInfo] = useState<TopicWithHub | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchDescription, setSearchDescription] = useState('')
   const [showSearchModal, setShowSearchModal] = useState(false)
   const [results, setResults] = useState<SearchResponseWithIds | null>(null)
   const [allSearches, setAllSearches] = useState<SearchGroup[]>([])
   const [selectedSearchId, setSelectedSearchId] = useState<number | 'all'>('all')
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
+  const [showEditTopic, setShowEditTopic] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [subtopics, setSubtopics] = useState<Subtopic[]>([])
+  const [showCreateSubtopic, setShowCreateSubtopic] = useState(false)
   const [loadingProgress, setLoadingProgress] = useState({
     long_form_videos: false,
     short_form_videos: false,
@@ -67,6 +81,8 @@ export default function TopicSearchBySlug() {
     podcasts: false,
     images: false
   })
+  const [selectedLinks, setSelectedLinks] = useState<Set<number>>(new Set())
+  const [sendingToSlack, setSendingToSlack] = useState(false)
   
   const router = useRouter()
   const params = useParams()
@@ -127,9 +143,12 @@ export default function TopicSearchBySlug() {
               id: cachedTopicDetails.topic.id,
               name: cachedTopicDetails.topic.name,
               description: cachedTopicDetails.topic.description,
+              image_url: cachedTopicDetails.topic.image_url,
+              color: cachedTopicDetails.topic.color,
               hub: cachedTopicDetails.hub
             })
             fetchSavedLinks(matchingTopic.id)
+            fetchSubtopics(matchingTopic.id)
           } else {
             const topicResponse = await fetch(`/api/topics/${matchingTopic.id}`)
             if (topicResponse.ok) {
@@ -139,9 +158,12 @@ export default function TopicSearchBySlug() {
                 id: topicData.topic.id,
                 name: topicData.topic.name,
                 description: topicData.topic.description,
+                image_url: topicData.topic.image_url,
+                color: topicData.topic.color,
                 hub: topicData.hub
               })
               fetchSavedLinks(matchingTopic.id)
+              fetchSubtopics(matchingTopic.id)
             } else {
               router.push(`/${hubSlug}`)
             }
@@ -238,6 +260,81 @@ export default function TopicSearchBySlug() {
     }
   };
 
+  const fetchSubtopics = async (topicId: number) => {
+    try {
+      const response = await fetch(`/api/topics/${topicId}/subtopics`)
+      if (response.ok) {
+        const subtopicData = await response.json()
+        setSubtopics(subtopicData)
+      }
+    } catch (error) {
+      console.error('Error fetching subtopics:', error)
+    }
+  }
+
+  const handleCreateSubtopic = async (subtopicData: {
+    name: string
+    description?: string
+    imageUrl?: string | null
+    color?: string | null
+  }) => {
+    if (!topicInfo) return
+
+    try {
+      const response = await fetch('/api/subtopics', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topicId: topicInfo.id,
+          name: subtopicData.name,
+          description: subtopicData.description,
+          imageUrl: subtopicData.imageUrl,
+          color: subtopicData.color
+        }),
+      })
+
+      if (response.ok) {
+        const newSubtopic = await response.json()
+        setSubtopics(prev => [newSubtopic, ...prev])
+      }
+    } catch (error) {
+      console.error('Error creating subtopic:', error)
+      throw error
+    }
+  }
+
+  const handleCreateBulkSubtopics = async (selectedSubtopics: any[]) => {
+    if (!topicInfo) return
+
+    try {
+      const response = await fetch('/api/subtopics/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topicId: topicInfo.id,
+          subtopics: selectedSubtopics.map(s => ({
+            name: s.name,
+            description: s.description,
+            imageUrl: s.imageUrl,
+            color: s.color
+          }))
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        setSubtopics(prev => [...result.subtopics, ...prev])
+      }
+    } catch (error) {
+      console.error('Error creating subtopics:', error)
+      throw error
+    }
+  }
+
   const handleSearchSelection = (searchId: number | 'all') => {
     setSelectedSearchId(searchId)
     
@@ -314,10 +411,11 @@ export default function TopicSearchBySlug() {
     }
   }
 
-  const handleSearch = async () => {
+  const handleSearch = async (searchQuery: string, searchDescription: string) => {
     if (!searchQuery.trim() || !topicInfo) return
     
     setSearching(true)
+    setShowSearchModal(false)
     
     // Create a temporary search pill immediately
     const tempSearchId = Date.now()
@@ -437,9 +535,6 @@ export default function TopicSearchBySlug() {
                 // Invalidate topic links cache - no need to refresh immediately since we already have the results
                 cache.invalidateCache('topicLinks', topicInfo.id)
                 
-                // Clear the search inputs
-                setSearchQuery('')
-                setSearchDescription('')
                 return
               }
               
@@ -531,6 +626,62 @@ export default function TopicSearchBySlug() {
     }
   }
 
+  const handleLinkSelection = (linkId: number, selected: boolean) => {
+    setSelectedLinks(prev => {
+      const newSet = new Set(prev)
+      if (selected) {
+        newSet.add(linkId)
+      } else {
+        newSet.delete(linkId)
+      }
+      return newSet
+    })
+  }
+
+  const handleSendToSlack = async () => {
+    if (selectedLinks.size === 0) return
+    
+    setSendingToSlack(true)
+    try {
+      // Collect all selected links
+      const allLinks: LinkWithId[] = []
+      if (results) {
+        Object.values(results).forEach(category => {
+          category.forEach((link: LinkWithId) => {
+            if (selectedLinks.has(link.id)) {
+              allLinks.push(link)
+            }
+          })
+        })
+      }
+      
+      const response = await fetch('/api/send-to-slack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          links: allLinks,
+          context: {
+            hub: topicInfo?.hub.name,
+            topic: topicInfo?.name
+          }
+        })
+      })
+      
+      if (response.ok) {
+        // Clear selection after successful send
+        setSelectedLinks(new Set())
+        alert('Links sent to Slack successfully!')
+      } else {
+        alert('Failed to send links to Slack')
+      }
+    } catch (error) {
+      console.error('Error sending to Slack:', error)
+      alert('Error sending links to Slack')
+    } finally {
+      setSendingToSlack(false)
+    }
+  }
+
   const handleRemoveLink = async (linkId: number) => {
     // Remove from UI immediately
     if (results) {
@@ -588,6 +739,70 @@ export default function TopicSearchBySlug() {
     console.log('Feedback:', linkId, feedback)
   }
 
+  const handleEditClick = () => {
+    setShowEditTopic(true)
+  }
+
+  const handleUpdateTopic = async (topicData: { name: string; description?: string; imageUrl?: string | null; color?: string | null }) => {
+    if (!topicInfo) return
+    
+    try {
+      const response = await fetch(`/api/topics/${topicInfo.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: topicData.name,
+          description: topicData.description,
+          imageUrl: topicData.imageUrl,
+          color: topicData.color
+        }),
+      })
+      
+      if (response.ok) {
+        const updatedTopic = await response.json()
+        setTopicInfo({
+          ...topicInfo,
+          name: updatedTopic.name,
+          description: updatedTopic.description,
+          image_url: updatedTopic.image_url,
+          color: updatedTopic.color
+        })
+        
+        // Clear cache
+        cache.invalidateCache('topicDetails', topicInfo.id)
+        
+        setShowEditTopic(false)
+      }
+    } catch (error) {
+      console.error('Error updating topic:', error)
+      throw error
+    }
+  }
+
+  const handleDeleteTopic = async () => {
+    if (!topicInfo) return
+    
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/topics/${topicInfo.id}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        // Clear cache and redirect to hub page
+        cache.invalidateCache('topicDetails', topicInfo.id)
+        cache.invalidateCache('hubTopics', topicInfo.hub.id)
+        router.push(`/${generateSlug(topicInfo.hub.name)}`)
+      }
+    } catch (error) {
+      console.error('Error deleting topic:', error)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen bg-hubcap-bg text-hubcap-text">
@@ -598,7 +813,7 @@ export default function TopicSearchBySlug() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {Array.from({ length: 8 }, (_, i) => (
-                <div key={i} className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div key={i} className="bg-surface-dark rounded-lg p-6 border border-gray-700">
                   <div className="h-48 bg-gray-700 rounded mb-4"></div>
                   <div className="h-6 bg-gray-600 rounded w-3/4 mb-3"></div>
                   <div className="h-4 bg-gray-700 rounded w-full mb-2"></div>
@@ -632,17 +847,137 @@ export default function TopicSearchBySlug() {
     <main className="min-h-screen bg-hubcap-bg text-hubcap-text">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="mb-8">
-          <Breadcrumbs items={[
-            { label: 'Hubs', href: '/' },
-            { label: topicInfo.hub.name, href: `/${generateSlug(topicInfo.hub.name)}` },
-            { label: topicInfo.name, active: true }
-          ]} />
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-4">
+              {/* Back Button */}
+              <button
+                onClick={() => router.push(`/${hubSlug}`)}
+                className="bg-surface-dark hover:bg-gray-700 border border-gray-600 rounded-full p-2.5 transition-colors shadow-lg flex-shrink-0 flex items-center justify-center"
+              >
+                <ArrowLeft size={20} className="text-white" />
+              </button>
+              
+              <div className="flex items-center mt-4">
+                <Breadcrumbs items={[
+                  { label: 'Hubs', href: '/', isHome: true },
+                  { label: topicInfo.hub.name, href: `/${generateSlug(topicInfo.hub.name)}`, imageUrl: topicInfo.hub.image_url, hubColor: topicInfo.hub.color, isHub: true },
+                  { label: topicInfo.name, active: true, imageUrl: topicInfo.image_url, isHub: false }
+                ]} />
+              </div>
+            </div>
+            
+            {/* Edit and Delete Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleEditClick}
+                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors flex items-center gap-2"
+              >
+                <PencilSimple size={16} />
+                Edit
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors flex items-center gap-2"
+              >
+                <Trash size={16} />
+                Delete
+              </button>
+            </div>
+          </div>
           
-          <h1 className="text-4xl font-bold mb-4">{topicInfo.name}</h1>
-          {topicInfo.description && (
-            <p className="text-xl text-gray-300 mb-6">{topicInfo.description}</p>
-          )}
+          {/* Large Centered Topic Display */}
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-6">
+              <div className="w-32 h-32 relative overflow-hidden rounded-2xl shadow-lg">
+                {topicInfo.image_url && (
+                  <Image
+                    src={topicInfo.image_url}
+                    alt={`${topicInfo.name} icon`}
+                    width={128}
+                    height={128}
+                    className="w-full h-full object-cover"
+                    unoptimized
+                  />
+                )}
+                {!topicInfo.image_url && (
+                  <div 
+                    className="w-full h-full flex items-center justify-center text-white font-bold text-4xl"
+                    style={{ 
+                      backgroundColor: topicInfo.color || 'rgba(255, 255, 255, 0.1)',
+                      color: topicInfo.color ? '#ffffff' : 'rgba(255, 255, 255, 0.5)'
+                    }}
+                  >
+                    {topicInfo.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <h1 className="text-5xl font-bold mb-4 text-white">
+              {topicInfo.name}
+            </h1>
+            
+            {topicInfo.description ? (
+              <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-6">
+                {topicInfo.description}
+              </p>
+            ) : (
+              <p className="text-lg text-gray-500 max-w-2xl mx-auto mb-6">
+                No description provided
+              </p>
+            )}
+          </div>
         </div>
+
+        {/* Subtopics Section */}
+        {(subtopics.length > 0 || !loading) && (
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-semibold text-white">Subtopics</h2>
+              <button
+                onClick={() => setShowCreateSubtopic(true)}
+                className="px-4 py-2 bg-hubcap-accent hover:bg-opacity-80 rounded-md transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <Plus size={16} />
+                Add Subtopics
+              </button>
+            </div>
+            
+            {subtopics.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {subtopics.map((subtopic) => (
+                  <SubtopicCard
+                    key={subtopic.id}
+                    id={subtopic.id}
+                    name={subtopic.name}
+                    imageUrl={subtopic.image_url}
+                    color={subtopic.color}
+                    hubSlug={hubSlug}
+                    topicSlug={topicSlug}
+                    onEdit={() => {
+                      // Handle edit subtopic
+                      console.log('Edit subtopic:', subtopic.name)
+                    }}
+                    onDelete={() => {
+                      // Handle delete subtopic
+                      console.log('Delete subtopic:', subtopic.name)
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-gray-800 rounded-lg border border-gray-700">
+                <p className="text-gray-400 mb-4">No subtopics yet.</p>
+                <button
+                  onClick={() => setShowCreateSubtopic(true)}
+                  className="px-6 py-3 bg-hubcap-accent hover:bg-opacity-80 rounded-md transition-colors font-medium"
+                >
+                  Create Your First Subtopic
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Search Pills */}
         <div className="flex flex-wrap gap-3 mb-6">
@@ -706,11 +1041,9 @@ export default function TopicSearchBySlug() {
           
           <button
             onClick={() => setShowSearchModal(true)}
-            className="px-4 py-2 rounded-full text-sm font-medium bg-hubcap-accent bg-opacity-20 text-hubcap-accent hover:bg-opacity-30 transition-colors flex items-center gap-2"
+            className="px-4 py-2 rounded-full text-sm font-medium bg-hubcap-accent bg-opacity-20 text-white hover:bg-opacity-30 transition-colors flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+            <MagnifyingGlass size={16} />
             Find New Links
           </button>
         </div>
@@ -725,6 +1058,8 @@ export default function TopicSearchBySlug() {
               onToggleVideo={toggleVideoPlayback}
               onRemove={handleRemoveLink}
               isLoading={loadingProgress.long_form_videos}
+              selectedLinks={selectedLinks}
+              onSelectionChange={handleLinkSelection}
             />
             <CategorySection 
               title="Short-form Videos" 
@@ -733,6 +1068,8 @@ export default function TopicSearchBySlug() {
               onToggleVideo={toggleVideoPlayback}
               onRemove={handleRemoveLink}
               isLoading={loadingProgress.short_form_videos}
+              selectedLinks={selectedLinks}
+              onSelectionChange={handleLinkSelection}
             />
             <CategorySection 
               title="Articles" 
@@ -740,6 +1077,8 @@ export default function TopicSearchBySlug() {
               onFeedback={handleFeedback}
               onRemove={handleRemoveLink}
               isLoading={loadingProgress.articles}
+              selectedLinks={selectedLinks}
+              onSelectionChange={handleLinkSelection}
             />
             <CategorySection 
               title="Podcasts" 
@@ -747,6 +1086,8 @@ export default function TopicSearchBySlug() {
               onFeedback={handleFeedback}
               onRemove={handleRemoveLink}
               isLoading={loadingProgress.podcasts}
+              selectedLinks={selectedLinks}
+              onSelectionChange={handleLinkSelection}
             />
             <CategorySection 
               title="Images" 
@@ -754,6 +1095,8 @@ export default function TopicSearchBySlug() {
               onFeedback={handleFeedback}
               onRemove={handleRemoveLink}
               isLoading={loadingProgress.images}
+              selectedLinks={selectedLinks}
+              onSelectionChange={handleLinkSelection}
             />
           </div>
         )}
@@ -772,74 +1115,107 @@ export default function TopicSearchBySlug() {
       </div>
 
       {/* Search Modal */}
-      {showSearchModal && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowSearchModal(false)
-            }
-          }}
-        >
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
-            <h2 className="text-xl font-semibold text-hubcap-accent mb-4">Find New Links</h2>
+      <SearchModal
+        isOpen={showSearchModal}
+        onClose={() => setShowSearchModal(false)}
+        onSearch={handleSearch}
+        searching={searching}
+        entityName="topic"
+      />
+
+      {/* Edit Topic Modal */}
+      <CreateTopicModal
+        isOpen={showEditTopic}
+        onClose={() => setShowEditTopic(false)}
+        onCreate={handleUpdateTopic}
+        isEditMode={true}
+        initialData={topicInfo ? {
+          name: topicInfo.name,
+          description: topicInfo.description,
+          imageUrl: topicInfo.image_url,
+          color: topicInfo.color
+        } : undefined}
+      />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface-dark rounded-lg p-6 w-full max-w-md border border-gray-700">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-red-400">Delete Topic</h2>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="text-gray-400 hover:text-white"
+                disabled={deleting}
+              >
+                ✕
+              </button>
+            </div>
             
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  What are you looking for? *
-                </label>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSearch()}
-                  placeholder="e.g., best sleep masks, bedtime routine"
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-hubcap-accent focus:border-transparent text-white placeholder-gray-400"
-                  maxLength={100}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Additional context (optional)
-                </label>
-                <textarea
-                  value={searchDescription}
-                  onChange={(e) => setSearchDescription(e.target.value)}
-                  placeholder="Any additional details or specific requirements..."
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-hubcap-accent focus:border-transparent text-white placeholder-gray-400 resize-none"
-                  rows={3}
-                  maxLength={200}
-                />
-              </div>
+            <div className="mb-6">
+              <p className="text-gray-300 mb-4">
+                Are you sure you want to delete "{topicInfo?.name}"? This will permanently remove:
+              </p>
+              <ul className="text-sm text-gray-400 space-y-1 ml-4">
+                <li>• All searches in this topic</li>
+                <li>• All saved links</li>
+                <li>• All associated data</li>
+              </ul>
+              <p className="text-red-400 text-sm mt-4 font-semibold">
+                This action cannot be undone.
+              </p>
             </div>
 
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteTopic}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-semibold transition-colors"
+              >
+                {deleting ? 'Deleting...' : 'Delete Topic'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Subtopic Modal */}
+      <CreateSubtopicModal
+        isOpen={showCreateSubtopic}
+        onClose={() => setShowCreateSubtopic(false)}
+        hubName={topicInfo?.hub.name || ''}
+        hubDescription={topicInfo?.hub.description}
+        topicName={topicInfo?.name || ''}
+        topicDescription={topicInfo?.description}
+        onCreate={handleCreateSubtopic}
+        onCreateBulk={handleCreateBulkSubtopics}
+      />
+
+      {/* Slack Send Banner */}
+      {selectedLinks.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 p-4 z-50">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <span className="text-white">
+              {selectedLinks.size} link{selectedLinks.size !== 1 ? 's' : ''} selected
+            </span>
             <button
-              onClick={() => {
-                setShowSearchModal(false)
-                handleSearch()
-              }}
-              disabled={!searchQuery.trim() || searching}
-              className="w-full mt-6 px-4 py-2 bg-hubcap-accent hover:bg-opacity-80 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-semibold transition-colors flex items-center justify-center gap-2"
+              onClick={handleSendToSlack}
+              disabled={sendingToSlack}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-md font-semibold transition-colors"
             >
-              {searching ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Searching...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  Find Links
-                </>
-              )}
+              {sendingToSlack ? 'Sending...' : 'Send to Slack'}
             </button>
           </div>
         </div>
       )}
+
     </main>
   )
 }
@@ -851,9 +1227,11 @@ interface CategorySectionProps {
   onToggleVideo?: (linkId: number) => void
   onRemove: (linkId: number) => void
   isLoading?: boolean
+  selectedLinks?: Set<number>
+  onSelectionChange?: (linkId: number, selected: boolean) => void
 }
 
-function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, isLoading }: CategorySectionProps) {
+function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, isLoading, selectedLinks, onSelectionChange }: CategorySectionProps) {
   if (!links.length && !isLoading) {
     return null
   }
@@ -876,6 +1254,8 @@ function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, is
             onFeedback={onFeedback}
             onToggleVideo={onToggleVideo}
             onRemove={onRemove}
+            isSelected={selectedLinks?.has(link.id)}
+            onSelectionChange={onSelectionChange}
           />
         ))}
       </div>
