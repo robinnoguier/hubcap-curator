@@ -29,6 +29,8 @@ export async function POST(request: NextRequest) {
     })
 
     // Insert all subtopics
+    console.log('Attempting to create subtopics:', subtopicsData)
+    
     const { data: createdSubtopics, error } = await supabase
       .from('subtopics')
       .insert(subtopicsData)
@@ -36,11 +38,23 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error creating subtopics:', error)
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
       return NextResponse.json(
-        { error: 'Failed to create subtopics' },
+        { 
+          error: 'Failed to create subtopics',
+          details: error.message,
+          code: error.code 
+        },
         { status: 500 }
       )
     }
+    
+    console.log('Successfully created subtopics:', createdSubtopics?.length)
 
     return NextResponse.json(
       { 

@@ -262,10 +262,14 @@ export default function TopicSearchBySlug() {
 
   const fetchSubtopics = async (topicId: number) => {
     try {
+      console.log('Fetching subtopics for topic:', topicId)
       const response = await fetch(`/api/topics/${topicId}/subtopics`)
       if (response.ok) {
         const subtopicData = await response.json()
+        console.log('Fetched subtopics:', subtopicData)
         setSubtopics(subtopicData)
+      } else {
+        console.error('Failed to fetch subtopics:', response.status, response.statusText)
       }
     } catch (error) {
       console.error('Error fetching subtopics:', error)
@@ -327,7 +331,12 @@ export default function TopicSearchBySlug() {
 
       if (response.ok) {
         const result = await response.json()
+        console.log('Bulk create response:', result)
         setSubtopics(prev => [...result.subtopics, ...prev])
+      } else {
+        const error = await response.json()
+        console.error('Failed to create subtopics:', error)
+        alert(`Failed to create subtopics: ${error.details || error.error}`)
       }
     } catch (error) {
       console.error('Error creating subtopics:', error)
