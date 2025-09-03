@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X } from 'phosphor-react'
+import { X, Check } from 'phosphor-react'
 import TopicCard from './TopicCard'
 
 interface TopicSuggestion {
@@ -22,6 +22,8 @@ interface TopicSelectionModalProps {
   hubDescription?: string
   onComplete: () => Promise<void>
   onNavigateToHub?: () => void
+  excludeTopics?: string[]
+  existingTopicImages?: string[]
 }
 
 export default function TopicSelectionModal({ 
@@ -31,7 +33,9 @@ export default function TopicSelectionModal({
   hubName, 
   hubDescription,
   onComplete,
-  onNavigateToHub 
+  onNavigateToHub,
+  excludeTopics = [],
+  existingTopicImages = []
 }: TopicSelectionModalProps) {
   const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([])
   const [loading, setLoading] = useState(false)
@@ -43,11 +47,30 @@ export default function TopicSelectionModal({
 
   useEffect(() => {
     if (isOpen && suggestions.length === 0) {
-      fetchSuggestions()
+      // Extract Giphy IDs from existing topic images
+      const existingGiphyIds = new Set<string>()
+      existingTopicImages.forEach(imageUrl => {
+        // Extract Giphy ID from URL if it's a Giphy image
+        // The actual Giphy ID is the last part before the file extension in the URL
+        // e.g., https://media.giphy.com/media/.../vIG0OEdkPnNSn0CMK8/100w.gif
+        const parts = imageUrl?.split('/') || []
+        const filenamePart = parts[parts.length - 1] // Get "100w.gif" or similar
+        const idPart = parts[parts.length - 2] // Get the ID part
+        
+        // The ID is the last segment before the size/format
+        if (idPart && imageUrl?.includes('giphy.com')) {
+          existingGiphyIds.add(idPart)
+          console.log('Found existing Giphy ID from URL:', idPart)
+        }
+      })
+      
+      // Set initial used IDs from existing topics
+      setUsedGiphyIds(existingGiphyIds)
+      fetchSuggestions(excludeTopics)
     }
-  }, [isOpen])
+  }, [isOpen, excludeTopics, existingTopicImages])
 
-  const fetchSuggestions = async (excludeTopics: string[] = []) => {
+  const fetchSuggestions = async (additionalExclude: string[] = []) => {
     setLoading(true)
     setError(null)
     
@@ -60,12 +83,13 @@ export default function TopicSelectionModal({
         body: JSON.stringify({
           hubName,
           hubDescription,
-          excludeTopics
+          excludeTopics: additionalExclude
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to fetch topic suggestions')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch topic suggestions')
       }
 
       const data = await response.json()
@@ -87,7 +111,13 @@ export default function TopicSelectionModal({
 
     } catch (error) {
       console.error('Error fetching suggestions:', error)
-      setError('Failed to generate topic suggestions. Please try again.')
+      
+      // Use the error message from the API if available
+      if (error instanceof Error) {
+        setError(error.message)
+      } else {
+        setError('Failed to generate topic suggestions. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -98,8 +128,8 @@ export default function TopicSelectionModal({
     setError(null)
     
     try {
-      // Get existing topic names to exclude
-      const existingTopicNames = suggestions.map(s => s.name)
+      // Get existing topic names to exclude (both from current suggestions and existing topics in hub)
+      const existingTopicNames = [...excludeTopics, ...suggestions.map(s => s.name)]
       
       const response = await fetch('/api/topics/suggestions', {
         method: 'POST',
@@ -114,7 +144,8 @@ export default function TopicSelectionModal({
       })
 
       if (!response.ok) {
-        throw new Error('Failed to fetch more topic suggestions')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch more topic suggestions')
       }
 
       const data = await response.json()
@@ -137,7 +168,13 @@ export default function TopicSelectionModal({
 
     } catch (error) {
       console.error('Error fetching more suggestions:', error)
-      setError('Failed to generate more topic suggestions. Please try again.')
+      
+      // Use the error message from the API if available
+      if (error instanceof Error) {
+        setError(error.message)
+      } else {
+        setError('Failed to generate more topic suggestions. Please try again.')
+      }
     } finally {
       setLoadingMore(false)
     }
@@ -191,10 +228,12 @@ export default function TopicSelectionModal({
         console.log(`Fetching image for: ${suggestion.name} with AI-generated query: ${optimalQuery}`)
         
         let foundUniqueImage = false
-        let offset = 0
-        const maxAttempts = 5 // Try up to 5 different offsets to find unique image
+        let attemptCount = 0
+        const maxAttempts = 10 // Try up to 10 different offsets to find unique image
         
-        while (!foundUniqueImage && offset < maxAttempts) {
+        while (!foundUniqueImage && attemptCount < maxAttempts) {
+          // Use random offset to get more variety in images
+          const offset = attemptCount * 5 + Math.floor(Math.random() * 5)
           const response = await fetch(`/api/giphy?q=${encodeURIComponent(optimalQuery)}&limit=1&offset=${offset}`)
           
           console.log(`Response status for ${suggestion.name} (offset ${offset}):`, response.status)
@@ -209,7 +248,11 @@ export default function TopicSelectionModal({
                 console.log(`Setting unique image for ${suggestion.name}:`, data.imageUrl, `(ID: ${data.imageId})`)
                 
                 // Add the ID to used set
-                setUsedGiphyIds(prev => new Set(Array.from(prev).concat([data.imageId])))
+                setUsedGiphyIds(prev => {
+                  const newSet = new Set(Array.from(prev).concat([data.imageId]))
+                  console.log(`Updated used Giphy IDs (${newSet.size} total):`, Array.from(newSet))
+                  return newSet
+                })
                 
                 // Update suggestion with image and ID
                 setSuggestions(prev => 
@@ -224,7 +267,7 @@ export default function TopicSelectionModal({
                 foundUniqueImage = true
               } else {
                 console.log(`Image ID ${data.imageId} already used, trying next offset`)
-                offset++
+                attemptCount++
               }
             } else if (data.imageUrl === null) {
               // No more images available
@@ -236,14 +279,14 @@ export default function TopicSelectionModal({
               )
               foundUniqueImage = true
             } else {
-              offset++
+              attemptCount++
             }
           } else {
             break // Exit on API error
           }
         }
         
-        if (!foundUniqueImage && offset >= maxAttempts) {
+        if (!foundUniqueImage && attemptCount >= maxAttempts) {
           console.log(`Could not find unique image for ${suggestion.name} after ${maxAttempts} attempts`)
           setSuggestions(prev => 
             prev.map((s, index) => 
@@ -394,6 +437,45 @@ export default function TopicSelectionModal({
                   </div>
                 </div>
               )}
+              
+              {/* Select All Checkbox */}
+              <div className="mb-4 flex items-center justify-between p-3 bg-gray-700/50 rounded-lg border border-gray-600">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      const allSelected = suggestions.every(s => s.selected)
+                      setSuggestions(prev => prev.map(s => ({ ...s, selected: !allSelected })))
+                    }}
+                    className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+                      suggestions.every(s => s.selected)
+                        ? 'bg-hubcap-accent border-hubcap-accent'
+                        : suggestions.some(s => s.selected)
+                        ? 'bg-hubcap-accent/50 border-hubcap-accent'
+                        : 'border-gray-400 hover:border-gray-300'
+                    }`}
+                  >
+                    {(suggestions.every(s => s.selected) || suggestions.some(s => s.selected)) && 
+                      <Check size={14} weight="bold" className="text-white" />
+                    }
+                  </button>
+                  <label className="text-white font-medium cursor-pointer select-none"
+                    onClick={() => {
+                      const allSelected = suggestions.every(s => s.selected)
+                      setSuggestions(prev => prev.map(s => ({ ...s, selected: !allSelected })))
+                    }}
+                  >
+                    {suggestions.every(s => s.selected) 
+                      ? 'Deselect All' 
+                      : suggestions.some(s => s.selected)
+                      ? `${selectedCount} of ${suggestions.length} selected`
+                      : 'Select All'
+                    }
+                  </label>
+                </div>
+                <span className="text-gray-400 text-sm">
+                  {suggestions.length} topic{suggestions.length !== 1 ? 's' : ''} available
+                </span>
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {suggestions.map((suggestion, index) => (
