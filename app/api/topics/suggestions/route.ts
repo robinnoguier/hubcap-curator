@@ -135,6 +135,32 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error generating topic suggestions:', error)
+    
+    // Check if it's a rate limit error
+    if (error instanceof Error && error.message.includes('Rate limit reached')) {
+      return NextResponse.json(
+        { 
+          error: 'OpenAI rate limit exceeded. Please try again in a few seconds.',
+          type: 'rate_limit',
+          retry_after: '60s'
+        },
+        { status: 429 }
+      )
+    }
+    
+    // Check for other OpenAI API errors
+    if (error instanceof Error && (error as any).status) {
+      const apiError = error as any
+      return NextResponse.json(
+        { 
+          error: apiError.message || 'OpenAI API error',
+          type: 'api_error',
+          status: apiError.status
+        },
+        { status: apiError.status || 500 }
+      )
+    }
+    
     return NextResponse.json(
       { error: 'Failed to generate topic suggestions' },
       { status: 500 }
