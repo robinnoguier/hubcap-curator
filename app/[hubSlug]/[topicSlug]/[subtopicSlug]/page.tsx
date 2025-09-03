@@ -10,7 +10,7 @@ import Breadcrumbs from '@/components/Breadcrumbs'
 import { useCache } from '@/lib/cache-context'
 import Image from 'next/image'
 import { Trash, MagnifyingGlass, ArrowLeft } from 'phosphor-react'
-import SearchModal from '@/components/SearchModal'
+import FindNewLinksModal from '@/components/FindNewLinksModal'
 
 interface LinkWithId extends Link {
   id: number;
@@ -31,6 +31,7 @@ interface SubtopicWithTopicAndHub {
   description?: string
   image_url?: string
   color?: string
+  metadata?: Record<string, any>
   topic: {
     id: number
     name: string
@@ -55,6 +56,7 @@ interface SearchGroup {
   linkCount: number
   pillImage: string | null
   links: SearchResponseWithIds
+  debugInfo?: Record<string, string>
 }
 
 interface SubtopicLinksResponse {
@@ -83,6 +85,7 @@ export default function SubtopicSearchBySlug() {
   })
   const [selectedLinks, setSelectedLinks] = useState<Set<number>>(new Set())
   const [sendingToSlack, setSendingToSlack] = useState(false)
+  const [searchDebugInfo, setSearchDebugInfo] = useState<Record<string, string>>({})
   
   const router = useRouter()
   const params = useParams()
@@ -200,24 +203,44 @@ export default function SubtopicSearchBySlug() {
         const data: SubtopicLinksResponse = await response.json()
         setResults(data.allLinks)
         setAllSearches(data.searches)
+        
+        // Auto-select the most recent search if there are any searches
+        if (data.searches.length > 0) {
+          const mostRecentSearch = data.searches[0]
+          setSelectedSearchId(mostRecentSearch.searchId)
+          // Set the results to show the most recent search's context
+          setResults(mostRecentSearch.links || {
+            long_form_videos: [],
+            short_form_videos: [],
+            articles: [],
+            podcasts: [],
+            images: []
+          })
+        }
       }
     } catch (error) {
       console.error('Error fetching subtopic links:', error)
     }
   }
 
-  const handleSearch = async (searchQuery: string, searchDescription: string) => {
-    if (!searchQuery.trim() || !subtopicInfo) return
+  const handleSearch = async (additionalContext?: string) => {
+    if (!subtopicInfo) return
     
     setSearching(true)
     setShowSearchModal(false)
+    // Clear previous global debug info (will be stored per search now)
+    setSearchDebugInfo({})
+    
+    // Build search query using subtopic, topic and hub context
+    const searchQuery = `${subtopicInfo.name} ${additionalContext || ''}`.trim()
+    const searchDescription = additionalContext || undefined
     
     // Create a temporary search pill immediately
     const tempSearchId = Date.now()
     const tempSearchPill: SearchGroup = {
       searchId: tempSearchId,
-      query: searchQuery.trim(),
-      description: searchDescription.trim() || undefined,
+      query: searchQuery,
+      description: searchDescription,
       created_at: new Date().toISOString(),
       linkCount: 0,
       pillImage: null,
@@ -227,7 +250,8 @@ export default function SubtopicSearchBySlug() {
         articles: [],
         podcasts: [],
         images: []
-      }
+      },
+      debugInfo: {}
     }
     
     // Add the temporary pill and select it
@@ -254,7 +278,7 @@ export default function SubtopicSearchBySlug() {
 
     try {
       // Build the full context query including hub, topic, and subtopic
-      const contextQuery = `${subtopicInfo.topic.hub.name} ${subtopicInfo.topic.name} ${subtopicInfo.name} ${searchQuery}`
+      const contextQuery = `${subtopicInfo.topic?.hub?.name || ''} ${subtopicInfo.topic?.name || ''} ${subtopicInfo.name} ${searchQuery}`
       
       const response = await fetch('/api/search-stream', {
         method: 'POST',
@@ -264,13 +288,13 @@ export default function SubtopicSearchBySlug() {
         body: JSON.stringify({
           topic: contextQuery,
           originalQuery: searchQuery, // Pass the original query separately
-          topicId: subtopicInfo.topic.id,
+          topicId: subtopicInfo.topic?.id,
           subtopicId: subtopicInfo.id,
-          searchDescription: searchDescription.trim() || undefined,
-          hubName: subtopicInfo.topic.hub.name,
-          hubDescription: subtopicInfo.topic.hub.description,
-          topicName: subtopicInfo.topic.name,
-          topicDescription: subtopicInfo.topic.description,
+          searchDescription: searchDescription?.trim() || undefined,
+          hubName: subtopicInfo.topic?.hub?.name,
+          hubDescription: subtopicInfo.topic?.hub?.description,
+          topicName: subtopicInfo.topic?.name,
+          topicDescription: subtopicInfo.topic?.description,
           subtopicName: subtopicInfo.name
         }),
       })
@@ -300,6 +324,27 @@ export default function SubtopicSearchBySlug() {
               console.log('Received stream data:', dataString)
               const data = JSON.parse(dataString)
               
+              // Handle debug messages
+              if (data.type === 'debug') {
+                console.log('Debug message received:', data)
+                // Store debug info in the current search instead of global state
+                setAllSearches(prev => 
+                  prev.map(search => {
+                    if (search.searchId === tempSearchId) {
+                      return {
+                        ...search,
+                        debugInfo: {
+                          ...search.debugInfo,
+                          [data.category]: `${data.api}: ${data.query}`
+                        }
+                      }
+                    }
+                    return search
+                  })
+                )
+                continue
+              }
+              
               if (data.type === 'done') {
                 setSearching(false)
                 setLoadingProgress({
@@ -310,29 +355,41 @@ export default function SubtopicSearchBySlug() {
                   images: false
                 })
                 
-                // Update the temporary pill with final link count
+                // Update the temporary pill with final link count and ensure results are preserved
                 setAllSearches(prev => 
                   prev.map(search => {
                     if (search.searchId === tempSearchId) {
+                      const finalLinks = results || {
+                        long_form_videos: [],
+                        short_form_videos: [],
+                        articles: [],
+                        podcasts: [],
+                        images: []
+                      }
+                      
                       const totalLinks = 
-                        (results?.long_form_videos?.length || 0) +
-                        (results?.short_form_videos?.length || 0) +
-                        (results?.articles?.length || 0) +
-                        (results?.podcasts?.length || 0) +
-                        (results?.images?.length || 0)
+                        (finalLinks.long_form_videos?.length || 0) +
+                        (finalLinks.short_form_videos?.length || 0) +
+                        (finalLinks.articles?.length || 0) +
+                        (finalLinks.podcasts?.length || 0) +
+                        (finalLinks.images?.length || 0)
                       
                       return {
                         ...search,
                         linkCount: totalLinks,
-                        links: results || search.links
+                        links: finalLinks
                       }
                     }
                     return search
                   })
                 )
                 
-                // Refresh the saved links to get the actual searchId from database
-                fetchSubtopicLinks(subtopicInfo.id)
+                console.log('Search completed - results preserved:', results)
+                console.log('Current allSearches after completion:', allSearches.map(s => ({id: s.searchId, linkCount: s.linkCount})))
+                console.log('Selected search ID:', tempSearchId)
+                
+                // DON'T refresh from database - just keep the current search with its debug info
+                // The search is already created in the database, we just keep the current state
                 
                 return
               }
@@ -403,6 +460,34 @@ export default function SubtopicSearchBySlug() {
         podcasts: false,
         images: false
       })
+    }
+  }
+
+  const handleDeleteSearch = async (searchId: number) => {
+    const searchToDelete = allSearches.find(s => s.searchId === searchId)
+    if (!searchToDelete) return
+    
+    const confirmed = confirm(`Are you sure you want to delete the search "${searchToDelete.query}" and all its ${searchToDelete.linkCount} links?`)
+    if (!confirmed) return
+    
+    try {
+      const response = await fetch(`/api/searches/${searchId}`, {
+        method: 'DELETE',
+      })
+      
+      if (response.ok) {
+        // Remove the search from the list
+        setAllSearches(prev => prev.filter(s => s.searchId !== searchId))
+        
+        // If this was the selected search, reset to 'all'
+        if (selectedSearchId === searchId) {
+          setSelectedSearchId('all')
+        }
+      } else {
+        console.error('Failed to delete search')
+      }
+    } catch (error) {
+      console.error('Error deleting search:', error)
     }
   }
 
@@ -491,6 +576,20 @@ export default function SubtopicSearchBySlug() {
   const displayedResults = selectedSearchId === 'all' 
     ? results 
     : allSearches.find(s => s.searchId === selectedSearchId)?.links || null
+    
+  // Debug logging
+  console.log('Display logic:', {
+    selectedSearchId,
+    allSearchesLength: allSearches.length,
+    allSearches: allSearches.map(s => ({id: s.searchId, query: s.query, linkCount: s.linkCount})),
+    selectedSearch: allSearches.find(s => s.searchId === selectedSearchId),
+    displayedResults: displayedResults ? Object.keys(displayedResults).map(k => `${k}: ${displayedResults[k as keyof typeof displayedResults]?.length || 0}`) : 'null',
+    resultsState: results ? Object.keys(results).map(k => `${k}: ${results[k as keyof typeof results]?.length || 0}`) : 'null'
+  })
+    
+  const displayedDebugInfo = selectedSearchId === 'all'
+    ? searchDebugInfo // For 'all' view, use global debug info (during active search)
+    : allSearches.find(s => s.searchId === selectedSearchId)?.debugInfo || {}
 
   if (loading) {
     return (
@@ -590,6 +689,42 @@ export default function SubtopicSearchBySlug() {
                 No description provided
               </p>
             )}
+            
+            {/* Metadata Pills */}
+            {subtopicInfo.metadata && Object.keys(subtopicInfo.metadata).length > 0 && (
+              <div className="flex flex-wrap gap-2 justify-center mb-6">
+                {Object.entries(subtopicInfo.metadata).map(([key, value]) => {
+                  if (value === null || value === undefined || value === '') return null;
+                  
+                  // Format the key to be more readable
+                  const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                  
+                  // Format the value
+                  let displayValue = value;
+                  if (typeof value === 'number') {
+                    // Add units for common fields
+                    if (key.includes('weight')) displayValue = `${value}kg`;
+                    else if (key.includes('height')) displayValue = `${value}cm`;
+                    else if (key.includes('age')) displayValue = `${value}y`;
+                    else displayValue = String(value);
+                  } else if (typeof value === 'boolean') {
+                    displayValue = value ? 'Yes' : 'No';
+                  } else {
+                    displayValue = String(value);
+                  }
+                  
+                  return (
+                    <span
+                      key={key}
+                      className="inline-flex items-center px-3 py-2 rounded-full text-sm font-medium bg-gray-800 text-gray-200 border border-gray-700"
+                    >
+                      <span className="text-gray-400 mr-2">{label}:</span>
+                      <span className="text-white font-semibold">{displayValue}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -644,11 +779,8 @@ export default function SubtopicSearchBySlug() {
                 </span>
               </button>
               <button
-                onClick={() => {
-                  // TODO: Implement delete search functionality
-                  console.log('Delete search:', search.searchId)
-                }}
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 w-6 h-6 rounded-full bg-red-500 bg-opacity-0 hover:bg-opacity-100 transition-all duration-200 flex items-center justify-center text-white text-xs opacity-0 group-hover:opacity-100"
+                onClick={() => handleDeleteSearch(search.searchId)}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
                 title="Delete search"
               >
                 ✕
@@ -677,6 +809,7 @@ export default function SubtopicSearchBySlug() {
               isLoading={loadingProgress.long_form_videos}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={displayedDebugInfo.long_form_videos}
             />
             <CategorySection 
               title="Short-form Videos" 
@@ -687,6 +820,7 @@ export default function SubtopicSearchBySlug() {
               isLoading={loadingProgress.short_form_videos}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={displayedDebugInfo.short_form_videos}
             />
             <CategorySection 
               title="Articles" 
@@ -696,6 +830,7 @@ export default function SubtopicSearchBySlug() {
               isLoading={loadingProgress.articles}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={displayedDebugInfo.articles}
             />
             <CategorySection 
               title="Podcasts" 
@@ -705,6 +840,7 @@ export default function SubtopicSearchBySlug() {
               isLoading={loadingProgress.podcasts}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={displayedDebugInfo.podcasts}
             />
             <CategorySection 
               title="Images" 
@@ -714,6 +850,7 @@ export default function SubtopicSearchBySlug() {
               isLoading={loadingProgress.images}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={displayedDebugInfo.images}
             />
           </div>
         ) : (
@@ -732,12 +869,15 @@ export default function SubtopicSearchBySlug() {
       </div>
 
       {/* Search Modal */}
-      <SearchModal
+      <FindNewLinksModal
         isOpen={showSearchModal}
         onClose={() => setShowSearchModal(false)}
         onSearch={handleSearch}
         searching={searching}
-        entityName="subtopic"
+        entityType="subtopic"
+        entityName={subtopicInfo?.name || ''}
+        hubName={subtopicInfo?.topic?.hub?.name || ''}
+        topicName={subtopicInfo?.topic?.name || ''}
       />
 
       {/* Delete Confirmation Modal */}
@@ -837,24 +977,38 @@ interface CategorySectionProps {
   isLoading?: boolean
   selectedLinks: Set<number>
   onSelectionChange: (linkId: number, selected: boolean) => void
+  debugInfo?: string
 }
 
-function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, isLoading, selectedLinks, onSelectionChange }: CategorySectionProps) {
-  if (!links.length && !isLoading) {
+function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, isLoading, selectedLinks, onSelectionChange, debugInfo }: CategorySectionProps) {
+  // Always show the section if we have debug info (which means a search was performed)
+  if (!links.length && !isLoading && !debugInfo) {
     return null
   }
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
-        <h2 className="text-xl font-semibold">{title}</h2>
-        {isLoading && (
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-hubcap-accent"></div>
+      <div className="flex flex-col mb-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold">{title}</h2>
+          {isLoading && (
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-hubcap-accent"></div>
+          )}
+          <span className="text-sm text-gray-400">({links.length})</span>
+        </div>
+        {debugInfo && (
+          <div className="mt-1 text-xs text-gray-500 font-mono bg-gray-800 px-2 py-1 rounded">
+            {debugInfo}
+          </div>
         )}
-        <span className="text-sm text-gray-400">({links.length})</span>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      {links.length === 0 && !isLoading ? (
+        <div className="text-gray-500 text-sm italic py-4">
+          No results found
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {links.map((link) => (
           <ResultCard
             key={link.id}
@@ -866,7 +1020,8 @@ function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, is
             onSelectionChange={onSelectionChange}
           />
         ))}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

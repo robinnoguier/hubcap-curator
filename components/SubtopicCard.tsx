@@ -8,8 +8,10 @@ import DropdownActions, { DropdownAction } from './DropdownActions'
 interface SubtopicCardProps {
   id: number
   name: string
+  description?: string
   imageUrl?: string | null
   color?: string | null
+  metadata?: Record<string, any>
   hubSlug: string
   topicSlug: string
   onEdit?: () => void
@@ -19,8 +21,10 @@ interface SubtopicCardProps {
 export default function SubtopicCard({ 
   id, 
   name, 
+  description,
   imageUrl, 
   color,
+  metadata,
   hubSlug,
   topicSlug,
   onEdit,
@@ -57,14 +61,14 @@ export default function SubtopicCard({
 
   return (
     <div className="group relative">
+      {/* Dropdown Actions - outside Link to prevent navigation */}
+      <DropdownActions actions={actions} />
+      
       <Link href={`/${hubSlug}/${topicSlug}/${subtopicSlug}`}>
         <div 
           className="rounded-lg p-6 border hover:border-opacity-80 transition-all duration-200 cursor-pointer"
           style={containerStyle}
         >
-          {/* Dropdown Actions */}
-          <DropdownActions actions={actions} />
-
           {/* Content matching TopicCard layout */}
           <div className="flex flex-col items-center justify-center text-center gap-3 min-h-[120px]">
             {/* Subtopic Image - Square like TopicCard */}
@@ -98,6 +102,49 @@ export default function SubtopicCard({
             <h2 className="text-xl font-semibold text-white group-hover:text-hubcap-accent transition-colors">
               {name}
             </h2>
+            
+            {/* Description */}
+            {description && (
+              <p className="text-gray-300 text-sm text-center leading-relaxed mt-1">
+                {description}
+              </p>
+            )}
+            
+            {/* Metadata Pills */}
+            {metadata && Object.keys(metadata).length > 0 && (
+              <div className="flex flex-wrap gap-1 justify-center mt-2">
+                {Object.entries(metadata).map(([key, value]) => {
+                  if (value === null || value === undefined || value === '') return null;
+                  
+                  // Format the key to be more readable
+                  const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                  
+                  // Format the value
+                  let displayValue = value;
+                  if (typeof value === 'number') {
+                    // Add units for common fields
+                    if (key.includes('weight')) displayValue = `${value}kg`;
+                    else if (key.includes('height')) displayValue = `${value}cm`;
+                    else if (key.includes('age')) displayValue = `${value}y`;
+                    else displayValue = String(value);
+                  } else if (typeof value === 'boolean') {
+                    displayValue = value ? 'Yes' : 'No';
+                  } else {
+                    displayValue = String(value);
+                  }
+                  
+                  return (
+                    <span
+                      key={key}
+                      className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-200 border border-gray-600"
+                    >
+                      <span className="text-gray-400 mr-1">{label}:</span>
+                      <span className="text-white">{displayValue}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </Link>

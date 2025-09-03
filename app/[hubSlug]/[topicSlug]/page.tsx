@@ -14,7 +14,7 @@ import { PencilSimple, Trash, MagnifyingGlass, Plus, ArrowLeft } from 'phosphor-
 import CreateSubtopicModal from '@/components/CreateSubtopicModal'
 import SubtopicCard from '@/components/SubtopicCard'
 import { Subtopic } from '@/lib/supabase'
-import SearchModal from '@/components/SearchModal'
+import FindNewLinksModal from '@/components/FindNewLinksModal'
 
 interface LinkWithId extends Link {
   id: number;
@@ -83,6 +83,7 @@ export default function TopicSearchBySlug() {
   })
   const [selectedLinks, setSelectedLinks] = useState<Set<number>>(new Set())
   const [sendingToSlack, setSendingToSlack] = useState(false)
+  const [searchDebugInfo, setSearchDebugInfo] = useState<Record<string, string>>({})
   
   const router = useRouter()
   const params = useParams()
@@ -204,6 +205,20 @@ export default function TopicSearchBySlug() {
       // Set all searches data
       setAllSearches(data.searches)
       
+      // Auto-select the most recent search if there are any searches and no current selection
+      if (data.searches.length > 0 && selectedSearchId === 'all') {
+        const mostRecentSearch = data.searches[0]
+        setSelectedSearchId(mostRecentSearch.searchId)
+        // Set the results to show the most recent search's context
+        setResults(mostRecentSearch.links || {
+          long_form_videos: [],
+          short_form_videos: [],
+          articles: [],
+          podcasts: [],
+          images: []
+        })
+      }
+      
       // If we had a temporary search selected, try to find the real one
       if (typeof selectedSearchId === 'number' && selectedSearchId > 1000000000000) {
         // This was a temporary ID (timestamp), find the matching real search
@@ -324,7 +339,8 @@ export default function TopicSearchBySlug() {
             name: s.name,
             description: s.description,
             imageUrl: s.imageUrl,
-            color: s.color
+            color: s.color,
+            metadata: s.metadata
           }))
         }),
       })
@@ -389,7 +405,7 @@ export default function TopicSearchBySlug() {
     }
     
     try {
-      const response = await fetch(`/api/searches?searchId=${searchId}`, {
+      const response = await fetch(`/api/searches/${searchId}`, {
         method: 'DELETE'
       })
       
@@ -420,18 +436,24 @@ export default function TopicSearchBySlug() {
     }
   }
 
-  const handleSearch = async (searchQuery: string, searchDescription: string) => {
-    if (!searchQuery.trim() || !topicInfo) return
+  const handleSearch = async (additionalContext?: string) => {
+    if (!topicInfo) return
     
     setSearching(true)
     setShowSearchModal(false)
+    // Clear previous debug info
+    setSearchDebugInfo({})
+    
+    // Build search query using topic and hub context
+    const searchQuery = `${topicInfo.name} ${additionalContext || ''}`.trim()
+    const searchDescription = additionalContext || undefined
     
     // Create a temporary search pill immediately
     const tempSearchId = Date.now()
     const tempSearchPill: SearchGroup = {
       searchId: tempSearchId,
-      query: searchQuery.trim(),
-      description: searchDescription.trim() || undefined,
+      query: searchQuery,
+      description: searchDescription,
       created_at: new Date().toISOString(),
       linkCount: 0,
       pillImage: null,
@@ -475,7 +497,7 @@ export default function TopicSearchBySlug() {
         body: JSON.stringify({ 
           topic: searchQuery.trim(),
           topicId: topicInfo.id,
-          searchDescription: searchDescription.trim() || undefined,
+          searchDescription: searchDescription?.trim() || undefined,
           hubName: topicInfo.hub.name,
           hubDescription: topicInfo.hub.description,
           topicName: topicInfo.name,
@@ -509,6 +531,15 @@ export default function TopicSearchBySlug() {
               const dataString = line.slice(6)
               console.log('Received stream data:', dataString)
               const data = JSON.parse(dataString)
+              
+              // Handle debug messages
+              if (data.type === 'debug') {
+                setSearchDebugInfo(prev => ({
+                  ...prev,
+                  [data.category]: `${data.api}: ${data.query}`
+                }))
+                continue
+              }
               
               if (data.type === 'done') {
                 setSearching(false)
@@ -959,8 +990,10 @@ export default function TopicSearchBySlug() {
                     key={subtopic.id}
                     id={subtopic.id}
                     name={subtopic.name}
+                    description={subtopic.description}
                     imageUrl={subtopic.image_url}
                     color={subtopic.color}
+                    metadata={subtopic.metadata}
                     hubSlug={hubSlug}
                     topicSlug={topicSlug}
                     onEdit={() => {
@@ -1040,7 +1073,7 @@ export default function TopicSearchBySlug() {
               </button>
               <button
                 onClick={() => handleDeleteSearch(search.searchId, search.query)}
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 w-6 h-6 rounded-full bg-red-500 bg-opacity-0 hover:bg-opacity-100 transition-all duration-200 flex items-center justify-center text-white text-xs opacity-0 group-hover:opacity-100"
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
                 title="Delete search"
               >
                 ✕
@@ -1069,6 +1102,7 @@ export default function TopicSearchBySlug() {
               isLoading={loadingProgress.long_form_videos}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={searchDebugInfo.long_form_videos}
             />
             <CategorySection 
               title="Short-form Videos" 
@@ -1079,6 +1113,7 @@ export default function TopicSearchBySlug() {
               isLoading={loadingProgress.short_form_videos}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={searchDebugInfo.short_form_videos}
             />
             <CategorySection 
               title="Articles" 
@@ -1088,6 +1123,7 @@ export default function TopicSearchBySlug() {
               isLoading={loadingProgress.articles}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={searchDebugInfo.articles}
             />
             <CategorySection 
               title="Podcasts" 
@@ -1097,6 +1133,7 @@ export default function TopicSearchBySlug() {
               isLoading={loadingProgress.podcasts}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={searchDebugInfo.podcasts}
             />
             <CategorySection 
               title="Images" 
@@ -1106,6 +1143,7 @@ export default function TopicSearchBySlug() {
               isLoading={loadingProgress.images}
               selectedLinks={selectedLinks}
               onSelectionChange={handleLinkSelection}
+              debugInfo={searchDebugInfo.images}
             />
           </div>
         )}
@@ -1124,12 +1162,14 @@ export default function TopicSearchBySlug() {
       </div>
 
       {/* Search Modal */}
-      <SearchModal
+      <FindNewLinksModal
         isOpen={showSearchModal}
         onClose={() => setShowSearchModal(false)}
         onSearch={handleSearch}
         searching={searching}
-        entityName="topic"
+        entityType="topic"
+        entityName={topicInfo?.name || ''}
+        hubName={topicInfo?.hub?.name || ''}
       />
 
       {/* Edit Topic Modal */}
@@ -1238,24 +1278,38 @@ interface CategorySectionProps {
   isLoading?: boolean
   selectedLinks?: Set<number>
   onSelectionChange?: (linkId: number, selected: boolean) => void
+  debugInfo?: string
 }
 
-function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, isLoading, selectedLinks, onSelectionChange }: CategorySectionProps) {
-  if (!links.length && !isLoading) {
+function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, isLoading, selectedLinks, onSelectionChange, debugInfo }: CategorySectionProps) {
+  // Always show the section if we have debug info (which means a search was performed)
+  if (!links.length && !isLoading && !debugInfo) {
     return null
   }
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
-        <h2 className="text-xl font-semibold">{title}</h2>
-        {isLoading && (
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-hubcap-accent"></div>
+      <div className="flex flex-col mb-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold">{title}</h2>
+          {isLoading && (
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-hubcap-accent"></div>
+          )}
+          <span className="text-sm text-gray-400">({links.length})</span>
+        </div>
+        {debugInfo && (
+          <div className="mt-1 text-xs text-gray-500 font-mono bg-gray-800 px-2 py-1 rounded">
+            {debugInfo}
+          </div>
         )}
-        <span className="text-sm text-gray-400">({links.length})</span>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      {links.length === 0 && !isLoading ? (
+        <div className="text-gray-500 text-sm italic py-4">
+          No results found
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {links.map((link) => (
           <ResultCard
             key={link.id}
@@ -1267,7 +1321,8 @@ function CategorySection({ title, links, onFeedback, onToggleVideo, onRemove, is
             onSelectionChange={onSelectionChange}
           />
         ))}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

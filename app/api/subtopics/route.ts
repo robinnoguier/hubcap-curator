@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 // POST /api/subtopics - Create a single subtopic
 export async function POST(request: NextRequest) {
   try {
-    const { topicId, name, description, imageUrl, color } = await request.json()
+    const { topicId, name, description, imageUrl, color, metadata } = await request.json()
     
     if (!topicId || !name?.trim()) {
       return NextResponse.json(
@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         description: description?.trim() || null,
         image_url: imageUrl || null,
-        color: color || null
+        color: color || null,
+        metadata: metadata || {}
       })
       .select()
       .single()

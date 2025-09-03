@@ -38,6 +38,7 @@ export interface Subtopic {
   description?: string
   image_url?: string
   color?: string
+  metadata?: Record<string, any>
   created_at: string
   updated_at: string
 }

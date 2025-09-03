@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, MagicWand, PencilSimple, Check } from 'phosphor-react'
+import { X, MagicWand, PencilSimple, Check, Database } from 'phosphor-react'
 import GiphyImagePicker from './GiphyImagePicker'
 import ColorPicker from './ColorPicker'
+import MetadataSuggestionModal from './MetadataSuggestionModal'
 
 interface SubtopicSuggestion {
   name: string
@@ -13,6 +14,8 @@ interface SubtopicSuggestion {
   color?: string | null
   selected: boolean
   editing?: boolean
+  normalized_name?: string
+  metadata?: Record<string, any>
 }
 
 interface CreateSubtopicModalProps {
@@ -61,6 +64,9 @@ export default function CreateSubtopicModal({
   const [manualColor, setManualColor] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
+  // Metadata modal state
+  const [showMetadataModal, setShowMetadataModal] = useState(false)
+
   const handleClose = () => {
     // Reset all state
     setActiveTab('auto')
@@ -78,6 +84,7 @@ export default function CreateSubtopicModal({
     setManualImageUrl(null)
     setManualColor(null)
     setCreating(false)
+    setShowMetadataModal(false)
     onClose()
   }
 
@@ -376,6 +383,21 @@ export default function CreateSubtopicModal({
     }
   }
 
+  const handleAddMetadata = () => {
+    setShowMetadataModal(true)
+  }
+
+  const handleApplyMetadata = (enhancedSubtopics: SubtopicSuggestion[], selectedFields: string[]) => {
+    // Update the suggestions with metadata
+    setSuggestions(prev => 
+      prev.map(suggestion => {
+        const enhanced = enhancedSubtopics.find(es => es.name === suggestion.name)
+        return enhanced ? { ...suggestion, ...enhanced } : suggestion
+      })
+    )
+    setShowMetadataModal(false)
+  }
+
   const selectedCount = suggestions.filter(s => s.selected).length
 
   if (!isOpen) return null
@@ -627,6 +649,16 @@ export default function CreateSubtopicModal({
                   >
                     Cancel
                   </button>
+                  {selectedCount > 0 && (
+                    <button
+                      onClick={handleAddMetadata}
+                      disabled={creating}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md transition-colors flex items-center gap-2"
+                    >
+                      <Database size={16} />
+                      Continue
+                    </button>
+                  )}
                   <button
                     onClick={handleCreateBulk}
                     disabled={selectedCount === 0 || creating}
@@ -665,6 +697,22 @@ export default function CreateSubtopicModal({
           </div>
         </div>
       </div>
+      
+      {/* Metadata Suggestion Modal */}
+      <MetadataSuggestionModal
+        isOpen={showMetadataModal}
+        onClose={() => setShowMetadataModal(false)}
+        selectedSubtopics={suggestions.filter(s => s.selected).map(s => ({
+          ...s,
+          normalized_name: s.normalized_name || s.name.toLowerCase().replace(/\s+/g, '_'),
+          metadata: s.metadata || {}
+        }))}
+        hubName={hubName}
+        hubDescription={hubDescription}
+        topicName={topicName}
+        topicDescription={topicDescription}
+        onApplyMetadata={handleApplyMetadata}
+      />
     </div>
   )
 }

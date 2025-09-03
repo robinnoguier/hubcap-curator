@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
         name: subtopic.name.trim(),
         description: subtopic.description?.trim() || null,
         image_url: subtopic.imageUrl || null,
-        color: subtopic.color || null
+        color: subtopic.color || null,
+        metadata: subtopic.metadata || {}
       }
     })
 
