@@ -6,6 +6,7 @@ import { generateEmbedding, extractLinksFromText, decodeHtmlEntities, fetchOGIma
 import { AI_PROMPTS } from '@/lib/prompts';
 import { Link, YouTubeVideo } from '@/lib/types';
 import { searchOperations, linkOperations } from '@/lib/supabase';
+import { queryBuilder, QueryContext } from '@/lib/query-builder';
 
 // Helper function to build contextual search query
 function buildContextualSearchQuery({
@@ -62,7 +63,13 @@ function buildContextualSearchQuery({
   return {
     originalQuery: userQuery,
     enrichedQuery,
-    contextParts
+    contextParts,
+    hubName,
+    hubDescription,
+    topicName,
+    topicDescription,
+    subtopicName,
+    searchDescription
   };
 }
 
@@ -192,6 +199,22 @@ async function handleSearch(params: {
         // Continue without saving to DB
       }
       
+      // Function to send debug messages
+      const sendDebugMessage = (category: string, api: string, query: string) => {
+        if (isClosed) return;
+        try {
+          const data = JSON.stringify({ 
+            type: 'debug',
+            category,
+            api,
+            query
+          });
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        } catch (error) {
+          console.error('Failed to send debug message:', error);
+        }
+      };
+
       const sendUpdate = async (category: string, links: Link[]) => {
         if (isClosed) {
           console.log(`Skipping update for ${category} - stream already closed`);
@@ -234,18 +257,18 @@ async function handleSearch(params: {
         const promises = [
           // Only call APIs that have their environment variables configured
           ...(process.env.PPLX_API_KEY ? [
-            fetchPerplexityLinks(contextualTopic, 'long_form_videos', sendUpdate),
-            fetchPerplexityLinks(contextualTopic, 'short_form_videos', sendUpdate), 
-            fetchPerplexityLinks(contextualTopic, 'articles', sendUpdate),
+            fetchPerplexityLinks(contextualTopic, 'long_form_videos', sendUpdate, sendDebugMessage),
+            fetchPerplexityLinks(contextualTopic, 'short_form_videos', sendUpdate, sendDebugMessage), 
+            fetchPerplexityLinks(contextualTopic, 'articles', sendUpdate, sendDebugMessage),
           ] : []),
           ...(process.env.YOUTUBE_API_KEY ? [
-            fetchYouTubeVideos(contextualTopic, sendUpdate),
-            fetchYouTubeShorts(contextualTopic, sendUpdate),
+            fetchYouTubeVideos(contextualTopic, sendUpdate, sendDebugMessage),
+            fetchYouTubeShorts(contextualTopic, sendUpdate, sendDebugMessage),
           ] : []),
           // Always call these as they have fallbacks
-          ...(process.env.NEWS_API_KEY ? [fetchNewsAPI(contextualTopic, sendUpdate)] : []),
-          fetchPodcasts(contextualTopic, sendUpdate),
-          fetchGoogleImages(contextualTopic, sendUpdate)
+          ...(process.env.NEWS_API_KEY ? [fetchNewsAPI(contextualTopic, sendUpdate, sendDebugMessage)] : []),
+          fetchPodcasts(contextualTopic, sendUpdate, sendDebugMessage),
+          fetchGoogleImages(contextualTopic, sendUpdate, sendDebugMessage)
         ];
 
         await Promise.allSettled(promises);
@@ -312,9 +335,39 @@ export async function POST(request: NextRequest) {
 
 // OpenAI removed since it was generating fake URLs
 
-async function fetchPerplexityLinks(contextualTopic: any, category: string, sendUpdate: Function) {
-  const topic = contextualTopic.enrichedQuery; // Use enriched context for search
+async function fetchPerplexityLinks(contextualTopic: any, category: string, sendUpdate: Function, sendDebugMessage: Function) {
   if (!process.env.PPLX_API_KEY) return;
+
+  // Build context for query builder
+  const queryContext: QueryContext = {
+    hub: {
+      name: contextualTopic.hubName || '',
+      description: contextualTopic.hubDescription
+    },
+    topic: {
+      name: contextualTopic.topicName || '',
+      description: contextualTopic.topicDescription
+    },
+    subtopic: contextualTopic.subtopicName ? {
+      name: contextualTopic.subtopicName
+    } : undefined,
+    additionalContext: contextualTopic.contextParts?.find((p: string) => p.startsWith('Additional Context:'))?.replace('Additional Context: ', ''),
+    platform: 'perplexity',
+    intent: category === 'articles' ? 'learn' : 'watch',
+    language: 'en'
+  };
+  
+  // Generate optimized query
+  const queryResponse = await queryBuilder.buildQuery(queryContext);
+  const optimizedQuery = queryBuilder.getBestQuery(queryResponse);
+  
+  console.log(`Perplexity ${category} query optimization:`, {
+    original: contextualTopic.originalQuery,
+    optimized: optimizedQuery,
+    reasoning: queryResponse.reasoning
+  });
+  
+  const topic = optimizedQuery || contextualTopic.enrichedQuery; // Fallback to enriched query
 
   try {
     const prompts = {
@@ -322,6 +375,9 @@ async function fetchPerplexityLinks(contextualTopic: any, category: string, send
       short_form_videos: AI_PROMPTS.PERPLEXITY.BASE(AI_PROMPTS.PERPLEXITY.SHORT_FORM_VIDEOS(topic)),
       articles: AI_PROMPTS.PERPLEXITY.BASE(AI_PROMPTS.PERPLEXITY.ARTICLES(topic))
     };
+
+    // Send debug info about what we're searching for
+    sendDebugMessage(category, 'Perplexity', `Search: ${optimizedQuery}`);
 
     const response = await axios.post(
       'https://api.perplexity.ai/chat/completions',
@@ -347,14 +403,28 @@ async function fetchPerplexityLinks(contextualTopic: any, category: string, send
     console.log(`Perplexity ${category} extracted ${links.length} links`);
     
     if (links.length > 0) {
-      const processedLinks = links.slice(0, 10).map(link => ({
-        ...link,
-        title: link.title || 'Untitled',
-        url: link.url || '',
-        snippet: link.snippet || '',
-        source: 'Perplexity',
-        category
-      })) as Link[];
+      const processedLinks = links.slice(0, 10).map(link => {
+        // Map Perplexity's section to our category system
+        let linkCategory = category;
+        if ('section' in link && link.section) {
+          if (link.section === 'articles') {
+            linkCategory = 'articles';
+          } else if (link.section === 'long_form_videos') {
+            linkCategory = 'long_form_videos';
+          } else if (link.section === 'short_form_videos') {
+            linkCategory = 'short_form_videos';
+          }
+        }
+        
+        return {
+          ...link,
+          title: link.title || 'Untitled',
+          url: link.url || '',
+          snippet: link.snippet || '',
+          source: 'Perplexity',
+          category: linkCategory
+        };
+      }) as Link[];
 
       // Store in database
       for (const link of processedLinks) {
@@ -377,21 +447,40 @@ async function fetchPerplexityLinks(contextualTopic: any, category: string, send
   }
 }
 
-async function fetchYouTubeVideos(contextualTopic: any, sendUpdate: Function) {
-  // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
-  
-  let searchQuery = contextualTopic.originalQuery;
-  if (topicContext) {
-    searchQuery += ` ${topicContext}`;
-  }
-  if (hubContext && hubContext !== topicContext) {
-    searchQuery += ` ${hubContext}`;
-  }
-  
-  const topic = searchQuery;
+async function fetchYouTubeVideos(contextualTopic: any, sendUpdate: Function, sendDebugMessage: Function) {
   if (!process.env.YOUTUBE_API_KEY) return;
+  
+  // Build context for query builder
+  const queryContext: QueryContext = {
+    hub: {
+      name: contextualTopic.hubName || '',
+      description: contextualTopic.hubDescription
+    },
+    topic: {
+      name: contextualTopic.topicName || '',
+      description: contextualTopic.topicDescription
+    },
+    subtopic: contextualTopic.subtopicName ? {
+      name: contextualTopic.subtopicName
+    } : undefined,
+    additionalContext: contextualTopic.contextParts?.find((p: string) => p.startsWith('Additional Context:'))?.replace('Additional Context: ', ''),
+    platform: 'youtube',
+    intent: 'watch',
+    language: 'en'
+  };
+  
+  // Generate optimized query
+  const queryResponse = await queryBuilder.buildQuery(queryContext);
+  const topic = queryBuilder.getBestQuery(queryResponse);
+  
+  console.log('YouTube query optimization:', {
+    original: contextualTopic.originalQuery,
+    optimized: topic,
+    reasoning: queryResponse.reasoning
+  });
+
+  // Send debug info about what we're searching for
+  sendDebugMessage('long_form_videos', 'YouTube', `Search: ${topic}`);
 
   try {
     const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
@@ -437,21 +526,45 @@ async function fetchYouTubeVideos(contextualTopic: any, sendUpdate: Function) {
   }
 }
 
-async function fetchYouTubeShorts(contextualTopic: any, sendUpdate: Function) {
-  // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
-  
-  let searchQuery = contextualTopic.originalQuery;
-  if (topicContext) {
-    searchQuery += ` ${topicContext}`;
-  }
-  if (hubContext && hubContext !== topicContext) {
-    searchQuery += ` ${hubContext}`;
-  }
-  
-  const topic = searchQuery;
+async function fetchYouTubeShorts(contextualTopic: any, sendUpdate: Function, sendDebugMessage: Function) {
   if (!process.env.YOUTUBE_API_KEY) return;
+  
+  // Build context for query builder
+  const queryContext: QueryContext = {
+    hub: {
+      name: contextualTopic.hubName || '',
+      description: contextualTopic.hubDescription
+    },
+    topic: {
+      name: contextualTopic.topicName || '',
+      description: contextualTopic.topicDescription
+    },
+    subtopic: contextualTopic.subtopicName ? {
+      name: contextualTopic.subtopicName
+    } : undefined,
+    additionalContext: contextualTopic.contextParts?.find((p: string) => p.startsWith('Additional Context:'))?.replace('Additional Context: ', ''),
+    platform: 'youtube',
+    intent: 'watch', // Shorts are quick watch content
+    language: 'en'
+  };
+  
+  // Generate optimized query for shorts
+  const queryResponse = await queryBuilder.buildQuery(queryContext);
+  let topic = queryBuilder.getBestQuery(queryResponse);
+  
+  // Ensure we're searching for shorts
+  if (!topic.includes('shorts') && !topic.includes('#shorts')) {
+    topic = `${topic} #shorts`;
+  }
+  
+  console.log('YouTube Shorts query optimization:', {
+    original: contextualTopic.originalQuery,
+    optimized: topic,
+    reasoning: queryResponse.reasoning
+  });
+
+  // Send debug info about what we're searching for
+  sendDebugMessage('short_form_videos', 'YouTube Shorts', `Search: ${topic}`);
 
   try {
     const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
@@ -617,20 +730,39 @@ async function createFallbackArticles(topic: string): Promise<Link[]> {
   return examples.slice(0, 3);
 }
 
-async function fetchPodcasts(contextualTopic: any, sendUpdate: Function) {
-  // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
+async function fetchPodcasts(contextualTopic: any, sendUpdate: Function, sendDebugMessage: Function) {
+  // Build context for query builder
+  const queryContext: QueryContext = {
+    hub: {
+      name: contextualTopic.hubName || '',
+      description: contextualTopic.hubDescription
+    },
+    topic: {
+      name: contextualTopic.topicName || '',
+      description: contextualTopic.topicDescription
+    },
+    subtopic: contextualTopic.subtopicName ? {
+      name: contextualTopic.subtopicName
+    } : undefined,
+    additionalContext: contextualTopic.contextParts?.find((p: string) => p.startsWith('Additional Context:'))?.replace('Additional Context: ', ''),
+    platform: 'openai', // Generic platform for podcasts
+    intent: 'learn',
+    language: 'en'
+  };
   
-  let searchQuery = contextualTopic.originalQuery;
-  if (topicContext) {
-    searchQuery += ` ${topicContext}`;
-  }
-  if (hubContext && hubContext !== topicContext) {
-    searchQuery += ` ${hubContext}`;
-  }
+  // Generate optimized query
+  const queryResponse = await queryBuilder.buildQuery(queryContext);
+  const topic = queryBuilder.getBestQuery(queryResponse) || contextualTopic.originalQuery;
   
-  const topic = searchQuery;
+  console.log('Podcast query optimization:', {
+    original: contextualTopic.originalQuery,
+    optimized: topic,
+    reasoning: queryResponse.reasoning
+  });
+  
+  // Send debug info about what we're searching for
+  sendDebugMessage('podcasts', 'Apple Podcasts', `Search: ${topic}`);
+
   try {
     // Use iTunes/Apple Podcasts API to search for podcasts
     const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(topic)}&media=podcast&limit=10`;
@@ -686,20 +818,36 @@ async function fetchPodcasts(contextualTopic: any, sendUpdate: Function) {
   }
 }
 
-async function fetchGoogleImages(contextualTopic: any, sendUpdate: Function) {
-  // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
+async function fetchGoogleImages(contextualTopic: any, sendUpdate: Function, sendDebugMessage: Function) {
+  // Build context for query builder
+  const queryContext: QueryContext = {
+    hub: {
+      name: contextualTopic.hubName || '',
+      description: contextualTopic.hubDescription
+    },
+    topic: {
+      name: contextualTopic.topicName || '',
+      description: contextualTopic.topicDescription
+    },
+    subtopic: contextualTopic.subtopicName ? {
+      name: contextualTopic.subtopicName
+    } : undefined,
+    additionalContext: contextualTopic.contextParts?.find((p: string) => p.startsWith('Additional Context:'))?.replace('Additional Context: ', ''),
+    platform: 'images',
+    intent: 'inspire',
+    language: 'en'
+  };
   
-  let searchQuery = contextualTopic.originalQuery;
-  if (topicContext) {
-    searchQuery += ` ${topicContext}`;
-  }
-  if (hubContext && hubContext !== topicContext) {
-    searchQuery += ` ${hubContext}`;
-  }
+  // Generate optimized query
+  const queryResponse = await queryBuilder.buildQuery(queryContext);
+  const topic = queryBuilder.getBestQuery(queryResponse) || contextualTopic.originalQuery;
   
-  const topic = searchQuery;
+  console.log('Images query optimization:', {
+    original: contextualTopic.originalQuery,
+    optimized: topic,
+    reasoning: queryResponse.reasoning
+  });
+  
   console.log('Unsplash: Starting search for topic:', topic);
   console.log('Unsplash API key available:', !!process.env.UNSPLASH_ACCESS_KEY);
   
@@ -715,6 +863,8 @@ async function fetchGoogleImages(contextualTopic: any, sendUpdate: Function) {
             content: `Context: ${contextualTopic.enrichedQuery}
 
 Given this context and the search term "${contextualTopic.originalQuery}", provide the 3 best keywords for searching high-quality images on Unsplash. 
+
+${contextualTopic.searchDescription ? `IMPORTANT: The user specifically wants content about: "${contextualTopic.searchDescription}". Focus your keywords on this specific request.` : ''}
 
 Focus on visual, concrete terms that would find relevant photos within this specific context. For example:
 - If searching "mask" in a sleep/health context, use keywords like "sleep mask eye mask rest"
@@ -739,6 +889,9 @@ Respond with just the keywords separated by spaces, nothing else.`
       }
     }
     
+    // Send debug info about what we're searching for
+    sendDebugMessage('images', 'Unsplash', `Search: ${searchKeywords}`);
+
     // Use Unsplash API as a high-quality image source
     if (process.env.UNSPLASH_ACCESS_KEY) {
       const response = await axios.get(`https://api.unsplash.com/search/photos`, {
@@ -813,21 +966,38 @@ Respond with just the keywords separated by spaces, nothing else.`
   sendUpdate('images', fallbackImages);
 }
 
-async function fetchNewsAPI(contextualTopic: any, sendUpdate: Function) {
-  // Create a contextual search query by combining original query with key context
-  const hubContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Hub:'))?.replace('Hub:', '').trim();
-  const topicContext = contextualTopic.contextParts.find((p: any) => p.startsWith('Topic:'))?.replace('Topic:', '').trim();
-  
-  let searchQuery = contextualTopic.originalQuery;
-  if (topicContext) {
-    searchQuery += ` ${topicContext}`;
-  }
-  if (hubContext && hubContext !== topicContext) {
-    searchQuery += ` ${hubContext}`;
-  }
-  
-  const topic = searchQuery;
+async function fetchNewsAPI(contextualTopic: any, sendUpdate: Function, sendDebugMessage: Function) {
   const API_KEY = '0690f59958ce4712b05a3dd2c7d54a22';
+  
+  // Build context for query builder
+  const queryContext: QueryContext = {
+    hub: {
+      name: contextualTopic.hubName || '',
+      description: contextualTopic.hubDescription
+    },
+    topic: {
+      name: contextualTopic.topicName || '',
+      description: contextualTopic.topicDescription
+    },
+    subtopic: contextualTopic.subtopicName ? {
+      name: contextualTopic.subtopicName
+    } : undefined,
+    additionalContext: contextualTopic.contextParts?.find((p: string) => p.startsWith('Additional Context:'))?.replace('Additional Context: ', ''),
+    platform: 'openai', // Using openai as generic for news
+    intent: 'news',
+    language: 'en',
+    recencyDays: 30 // Recent news
+  };
+  
+  // Generate optimized query
+  const queryResponse = await queryBuilder.buildQuery(queryContext);
+  const topic = queryBuilder.getBestQuery(queryResponse) || contextualTopic.originalQuery;
+  
+  console.log('NewsAPI query optimization:', {
+    original: contextualTopic.originalQuery,
+    optimized: topic,
+    reasoning: queryResponse.reasoning
+  });
   
   console.log(`NewsAPI: Starting search for topic "${topic}"`);
   

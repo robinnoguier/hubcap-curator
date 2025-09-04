@@ -9,10 +9,11 @@ import Breadcrumbs from '@/components/Breadcrumbs'
 import CreateTopicModal from '@/components/CreateTopicModal'
 import CreateHubModal from '@/components/CreateHubModal'
 import DeleteHubModal from '@/components/DeleteHubModal'
+import TopicSelectionModal from '@/components/TopicSelectionModal'
 import { useHubImage } from '@/lib/hooks/useHubImage'
 import { useCache } from '@/lib/cache-context'
 import HubLogo from '@/components/HubLogo'
-import { PencilSimple, Trash, Plus, ArrowLeft } from 'phosphor-react'
+import { PencilSimple, Trash, Plus, ArrowLeft, Sparkle } from 'phosphor-react'
 
 export default function HubDetailBySlug() {
   const [hub, setHub] = useState<Hub | null>(null)
@@ -24,6 +25,8 @@ export default function HubDetailBySlug() {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
   const [showEditHub, setShowEditHub] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [showTopicSuggestions, setShowTopicSuggestions] = useState(false)
   const router = useRouter()
   const params = useParams()
   const hubSlug = params.hubSlug as string
@@ -41,13 +44,28 @@ export default function HubDetailBySlug() {
     }
   }, [hubSlug])
 
-  const fetchHubBySlug = async () => {
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showDropdown) {
+        const dropdownElement = document.getElementById('topic-dropdown-slug')
+        if (dropdownElement && !dropdownElement.contains(event.target as Node)) {
+          setShowDropdown(false)
+        }
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showDropdown])
+
+  const fetchHubBySlug = async (forceRefresh = false) => {
     try {
-      // First try to get hubs from cache
-      let hubs = cache.getHubs()
+      // First try to get hubs from cache (unless force refresh)
+      let hubs = forceRefresh ? null : cache.getHubs()
       
       if (!hubs) {
-        // If not cached, fetch from API
+        // If not cached or force refresh, fetch from API
         const response = await fetch('/api/hubs')
         if (response.ok) {
           hubs = await response.json()
@@ -63,8 +81,8 @@ export default function HubDetailBySlug() {
       const matchingHub = hubs?.find((h: Hub) => generateSlug(h.name) === hubSlug)
       
       if (matchingHub) {
-        // Check cache for hub with topics
-        const cachedHubWithTopics = cache.getHubWithTopics(matchingHub.id)
+        // Check cache for hub with topics (unless force refresh)
+        const cachedHubWithTopics = forceRefresh ? null : cache.getHubWithTopics(matchingHub.id)
         
         if (cachedHubWithTopics) {
           setHub(cachedHubWithTopics.hub)
@@ -73,7 +91,7 @@ export default function HubDetailBySlug() {
           return
         }
         
-        // If not cached, fetch from API
+        // If not cached or force refresh, fetch from API
         const hubResponse = await fetch(`/api/hubs/${matchingHub.id}`)
         if (hubResponse.ok) {
           const data = await hubResponse.json()
@@ -393,18 +411,60 @@ export default function HubDetailBySlug() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {/* Create New Topic Card */}
-          <div 
-            className="bg-surface-dark rounded-lg p-6 border border-gray-600 border-dashed hover:border-hubcap-accent transition-all duration-200 cursor-pointer flex flex-col items-center justify-center min-h-[160px]"
-            onClick={() => setShowCreateTopic(true)}
-          >
-            <div className="w-12 h-12 rounded-full bg-hubcap-accent bg-opacity-20 flex items-center justify-center mb-4">
-              <Plus size={24} className="text-white" />
+          {/* Create New Topic Card with Dropdown */}
+          <div className="relative" id="topic-dropdown-slug">
+            <div 
+              className="bg-surface-dark rounded-lg p-6 border border-gray-600 border-dashed hover:border-hubcap-accent transition-all duration-200 cursor-pointer flex flex-col items-center justify-center min-h-[160px]"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setShowDropdown(prev => !prev)
+                setShowCreateTopic(false)
+                setShowTopicSuggestions(false)
+              }}
+            >
+              <div className="w-12 h-12 rounded-full bg-hubcap-accent bg-opacity-20 flex items-center justify-center mb-4">
+                <Plus size={24} className="text-white" />
+              </div>
+              <h3 className="text-lg font-semibold text-white">Create New Topic</h3>
+              <p className="text-sm text-gray-400 text-center mt-2">
+                {showDropdown ? 'Choose an option below' : 'Add a topic to this hub'}
+              </p>
             </div>
-            <h3 className="text-lg font-semibold text-white">Create New Topic</h3>
-            <p className="text-sm text-gray-400 text-center mt-2">
-              Add a topic to this hub
-            </p>
+            
+            {/* Dropdown Menu */}
+            {showDropdown && (
+              <div className="absolute left-0 right-0 top-full mt-2 bg-gray-800 border border-gray-600 rounded-lg shadow-lg py-1 z-50">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowDropdown(false)
+                    setShowCreateTopic(true)
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-gray-700 transition-colors flex items-center gap-3 text-gray-300 hover:text-white"
+                >
+                  <PencilSimple size={20} />
+                  <div>
+                    <div className="font-medium">Manual Create</div>
+                    <div className="text-xs text-gray-400">Create a custom topic</div>
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowDropdown(false)
+                    setShowTopicSuggestions(true)
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-gray-700 transition-colors flex items-center gap-3 text-gray-300 hover:text-white"
+                >
+                  <Sparkle size={20} />
+                  <div>
+                    <div className="font-medium">Auto Generate</div>
+                    <div className="text-xs text-gray-400">Get AI suggestions</div>
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Existing Topics */}
@@ -513,6 +573,20 @@ export default function HubDetailBySlug() {
         onDelete={handleDeleteHub}
         hub={hub}
       />
+
+      {/* Topic Suggestions Modal */}
+      {hub && (
+        <TopicSelectionModal
+          isOpen={showTopicSuggestions}
+          onClose={() => setShowTopicSuggestions(false)}
+          hubId={hub.id}
+          hubName={hub.name}
+          hubDescription={hub.description || undefined}
+          onComplete={() => fetchHubBySlug(true)} // Force refresh after creating topics
+          excludeTopics={topics.map(t => t.name)}
+          existingTopicImages={topics.map(t => t.image_url).filter(url => url) as string[]}
+        />
+      )}
 
     </main>
   )

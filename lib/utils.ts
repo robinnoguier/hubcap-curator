@@ -134,7 +134,8 @@ export const extractLinksFromText = (text: string, source: string): Partial<Link
         thumbnail: getYouTubeThumbnail(link.url) || undefined,
         creator: link.creator || null,
         published_at: link.published_at || null,
-        duration_sec: link.duration_sec || null
+        duration_sec: link.duration_sec || null,
+        section: link.section || null
       }));
     }
   } catch (e) {
