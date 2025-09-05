@@ -967,7 +967,12 @@ Respond with just the keywords separated by spaces, nothing else.`
 }
 
 async function fetchNewsAPI(contextualTopic: any, sendUpdate: Function, sendDebugMessage: Function) {
-  const API_KEY = '0690f59958ce4712b05a3dd2c7d54a22';
+  const API_KEY = process.env.NEWS_API_KEY;
+  
+  if (!API_KEY) {
+    console.log('No News API key found, skipping news fetch');
+    return;
+  }
   
   // Build context for query builder
   const queryContext: QueryContext = {
