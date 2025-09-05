@@ -88,8 +88,8 @@ export default function HubGiphyImagePicker({
       }
     }
 
-    // Debounce the API call
-    const debounceTimer = setTimeout(fetchImages, 500)
+    // Increased debounce time to reduce API calls
+    const debounceTimer = setTimeout(fetchImages, 800)
     return () => clearTimeout(debounceTimer)
   }, [activeQuery, offset])
 

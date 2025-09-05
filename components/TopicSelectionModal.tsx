@@ -68,7 +68,7 @@ export default function TopicSelectionModal({
       setUsedGiphyIds(existingGiphyIds)
       fetchSuggestions(excludeTopics)
     }
-  }, [isOpen, excludeTopics, existingTopicImages])
+  }, [isOpen])
 
   const fetchSuggestions = async (additionalExclude: string[] = []) => {
     setLoading(true)
@@ -219,101 +219,139 @@ export default function TopicSelectionModal({
     console.log('Fetching Giphy images for:', suggestionsList.map(s => s.name))
     setGiphyError(null) // Clear any previous errors
     
-    // Fetch images one by one
-    for (let i = 0; i < suggestionsList.length; i++) {
-      const suggestion = suggestionsList[i]
-      const optimalQuery = await generateOptimalQuery(suggestion.name, suggestion.description)
+    // Limit concurrent requests and add circuit breaker
+    let rateLimitHit = false
+    let errorCount = 0
+    const maxErrors = 3
+    
+    // Process in smaller batches to avoid overwhelming the API
+    const batchSize = 3
+    for (let batch = 0; batch < Math.ceil(suggestionsList.length / batchSize); batch++) {
+      if (rateLimitHit || errorCount >= maxErrors) break
       
-      try {
-        console.log(`Fetching image for: ${suggestion.name} with AI-generated query: ${optimalQuery}`)
+      const batchStart = batch * batchSize
+      const batchEnd = Math.min(batchStart + batchSize, suggestionsList.length)
+      const batchSuggestions = suggestionsList.slice(batchStart, batchEnd)
+      
+      // Process batch items with increased delay
+      for (let i = 0; i < batchSuggestions.length; i++) {
+        if (rateLimitHit || errorCount >= maxErrors) break
         
-        let foundUniqueImage = false
-        let attemptCount = 0
-        const maxAttempts = 10 // Try up to 10 different offsets to find unique image
+        const suggestion = batchSuggestions[i]
+        const actualIndex = batchStart + i
         
-        while (!foundUniqueImage && attemptCount < maxAttempts) {
-          // Use random offset to get more variety in images
-          const offset = attemptCount * 5 + Math.floor(Math.random() * 5)
-          const response = await fetch(`/api/giphy?q=${encodeURIComponent(optimalQuery)}&limit=1&offset=${offset}`)
+        try {
+          const optimalQuery = await generateOptimalQuery(suggestion.name, suggestion.description)
+          console.log(`Fetching image for: ${suggestion.name} with AI-generated query: ${optimalQuery}`)
           
-          console.log(`Response status for ${suggestion.name} (offset ${offset}):`, response.status)
+          let foundUniqueImage = false
+          let attemptCount = 0
+          const maxAttempts = 3 // Reduced from 10 to limit API calls
           
-          if (response.ok) {
-            const data = await response.json()
-            console.log(`Data for ${suggestion.name}:`, data)
+          while (!foundUniqueImage && attemptCount < maxAttempts && !rateLimitHit) {
+            const offset = attemptCount * 5 + Math.floor(Math.random() * 5)
+            const response = await fetch(`/api/giphy?q=${encodeURIComponent(optimalQuery)}&limit=1&offset=${offset}`)
             
-            if (data.imageUrl && data.imageId) {
-              // Check if this image ID is already used
-              if (!usedGiphyIds.has(data.imageId)) {
-                console.log(`Setting unique image for ${suggestion.name}:`, data.imageUrl, `(ID: ${data.imageId})`)
-                
-                // Add the ID to used set
-                setUsedGiphyIds(prev => {
-                  const newSet = new Set(Array.from(prev).concat([data.imageId]))
-                  console.log(`Updated used Giphy IDs (${newSet.size} total):`, Array.from(newSet))
-                  return newSet
-                })
-                
-                // Update suggestion with image and ID
+            console.log(`Response status for ${suggestion.name} (offset ${offset}):`, response.status)
+            
+            if (response.status === 429) {
+              rateLimitHit = true
+              setGiphyError('Giphy API rate limit exceeded. Please wait before requesting more images.')
+              break
+            }
+            
+            if (response.ok) {
+              const data = await response.json()
+              
+              if (data.imageUrl && data.imageId) {
+                // Check if this image ID is already used
+                if (!usedGiphyIds.has(data.imageId)) {
+                  console.log(`Setting unique image for ${suggestion.name}:`, data.imageUrl, `(ID: ${data.imageId})`)
+                  
+                  // Add the ID to used set
+                  setUsedGiphyIds(prev => new Set(Array.from(prev).concat([data.imageId])))
+                  
+                  // Update suggestion with image and ID
+                  setSuggestions(prev => 
+                    prev.map((s, index) => 
+                      index === startIndex + actualIndex ? { 
+                        ...s, 
+                        imageUrl: data.imageUrl,
+                        imageId: data.imageId 
+                      } : s
+                    )
+                  )
+                  foundUniqueImage = true
+                } else {
+                  console.log(`Image ID ${data.imageId} already used, trying next offset`)
+                  attemptCount++
+                }
+              } else if (data.imageUrl === null) {
+                // No more images available
+                console.log(`No more images available for ${suggestion.name}`)
                 setSuggestions(prev => 
                   prev.map((s, index) => 
-                    index === startIndex + i ? { 
-                      ...s, 
-                      imageUrl: data.imageUrl,
-                      imageId: data.imageId 
-                    } : s
+                    index === startIndex + actualIndex ? { ...s, imageUrl: null, imageId: null } : s
                   )
                 )
                 foundUniqueImage = true
               } else {
-                console.log(`Image ID ${data.imageId} already used, trying next offset`)
                 attemptCount++
               }
-            } else if (data.imageUrl === null) {
-              // No more images available
-              console.log(`No more images available for ${suggestion.name}`)
-              setSuggestions(prev => 
-                prev.map((s, index) => 
-                  index === startIndex + i ? { ...s, imageUrl: null, imageId: null } : s
-                )
-              )
-              foundUniqueImage = true
             } else {
-              attemptCount++
+              errorCount++
+              if (errorCount >= maxErrors) {
+                setGiphyError('Multiple Giphy API errors. Please try again later.')
+              }
+              break // Exit on API error
             }
-          } else {
-            break // Exit on API error
+            
+            // Increased delay between attempts
+            await new Promise(resolve => setTimeout(resolve, 300))
+          }
+          
+          if (!foundUniqueImage && attemptCount >= maxAttempts) {
+            console.log(`Could not find unique image for ${suggestion.name} after ${maxAttempts} attempts`)
+            setSuggestions(prev => 
+              prev.map((s, index) => 
+                index === startIndex + actualIndex ? { ...s, imageUrl: null, imageId: null } : s
+              )
+            )
+          }
+        } catch (error) {
+          console.error(`Error fetching image for topic "${suggestion.name}":`, error)
+          errorCount++
+          
+          setSuggestions(prev => 
+            prev.map((s, index) => 
+              index === startIndex + actualIndex ? { ...s, imageUrl: null } : s
+            )
+          )
+          
+          // If it's a JSON parsing error, likely rate limited
+          if (error instanceof Error && error.message.includes('Unexpected token')) {
+            rateLimitHit = true
+            setGiphyError('Giphy API rate limit exceeded. Images are temporarily unavailable.')
+            break
+          }
+          
+          if (errorCount >= maxErrors) {
+            setGiphyError('Multiple errors occurred while fetching images. Please try again later.')
+            break
           }
         }
         
-        if (!foundUniqueImage && attemptCount >= maxAttempts) {
-          console.log(`Could not find unique image for ${suggestion.name} after ${maxAttempts} attempts`)
-          setSuggestions(prev => 
-            prev.map((s, index) => 
-              index === startIndex + i ? { ...s, imageUrl: null, imageId: null } : s
-            )
-          )
-        }
-      } catch (error) {
-        console.error(`Error fetching image for topic "${suggestion.name}":`, error)
-        setSuggestions(prev => 
-          prev.map((s, index) => 
-            index === startIndex + i ? { ...s, imageUrl: null } : s
-          )
-        )
-        
-        // If it's a JSON parsing error, likely rate limited
-        if (error instanceof Error && error.message.includes('Unexpected token')) {
-          setGiphyError('Giphy API rate limit exceeded. Images are temporarily unavailable.')
-          break
-        }
+        // Longer delay between individual requests
+        await new Promise(resolve => setTimeout(resolve, 500))
       }
       
-      // Small delay between requests to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 200))
+      // Delay between batches
+      if (batch < Math.ceil(suggestionsList.length / batchSize) - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
     }
     
-    console.log('Finished fetching all images')
+    console.log('Finished fetching images (with rate limiting)')
   }
 
   const toggleSelection = (index: number) => {
